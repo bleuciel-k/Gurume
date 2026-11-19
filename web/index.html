@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!--
+    Uncomment the tag below to lay the app out underneath the parts of the
+    screen that the device obstructs, such as a display cutout, the rounded
+    corners of the screen, or a home indicator.
+
+    Without it, the browser keeps the app clear of them, and `SafeArea` and
+    `MediaQuery.paddingOf` report no padding. With it, the app covers the whole
+    screen, and it is up to the app to keep its own content out of the way,
+    which is what `SafeArea` is for.
+  -->
+  <!-- <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"> -->
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="oreguru">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>oreguru</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Google Maps JavaScript SDK 동적 로더 (URL ?mapsKey=, localStorage, 또는 직접 입력) -->
+  <script>
+    (function () {
+      var STORAGE_KEY = 'oreguru_gmaps_api_key';
+      var PRESET_KEY = ''; // 필요 시 여기에 Google Maps API 키를 직접 입력할 수 있습니다.
+      var pendingPromise = null;
+
+      function getQueryParamKey() {
+        try {
+          return new URLSearchParams(window.location.search).get('mapsKey') || '';
+        } catch (_) {
+          return '';
+        }
+      }
+
+      window.oreguruStorage = {
+        get: function (key) {
+          try { return localStorage.getItem(key); } catch (_) { return null; }
+        },
+        set: function (key, value) {
+          try { localStorage.setItem(key, value); } catch (_) {}
+        },
+        remove: function (key) {
+          try { localStorage.removeItem(key); } catch (_) {}
+        }
+      };
+
+      window.oreguruMaps = {
+        isLoaded: function () {
+          return Boolean(window.google && window.google.maps);
+        },
+        getStoredKey: function () {
+          var qKey = getQueryParamKey();
+          if (qKey) {
+            try { localStorage.setItem(STORAGE_KEY, qKey); } catch (_) {}
+            return qKey;
+          }
+          try {
+            return localStorage.getItem(STORAGE_KEY) || PRESET_KEY;
+          } catch (_) {
+            return PRESET_KEY;
+          }
+        },
+        loadWithKey: function (apiKey) {
+          if (window.oreguruMaps.isLoaded()) {
+            return Promise.resolve(true);
+          }
+          if (!apiKey || !apiKey.trim()) {
+            return Promise.resolve(false);
+          }
+          var cleanKey = apiKey.trim();
+          try { localStorage.setItem(STORAGE_KEY, cleanKey); } catch (_) {}
+
+          if (pendingPromise) return pendingPromise;
+
+          pendingPromise = new Promise(function (resolve) {
+            var script = document.createElement('script');
+            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(cleanKey);
+            script.async = true;
+            script.defer = true;
+            script.onload = function () {
+              pendingPromise = null;
+              resolve(window.oreguruMaps.isLoaded());
+            };
+            script.onerror = function () {
+              pendingPromise = null;
+              resolve(false);
+            };
+            document.head.appendChild(script);
+          });
+          return pendingPromise;
+        }
+      };
+
+      var initialKey = window.oreguruMaps.getStoredKey();
+      if (initialKey) {
+        window.oreguruMaps.loadWithKey(initialKey);
+      }
+    })();
+  </script>
+</head>
+<body>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

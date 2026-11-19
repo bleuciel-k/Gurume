@@ -1,0 +1,308 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Target database: Cloud Firestore (Standard edition default or named database)
+// App: Oreguru (オレグル) restaurant discovery Flutter app
+//
+// Collection: restaurants
+// Document ID: {restaurantId} (1..128 chars)
+// Access Pattern:
+//   - Public unauthenticated read (get, list) for catalog caching & delta sync
+//     query: collection('restaurants').where('updatedAt', isGreaterThan: lastSyncMillis)
+//   - Client writes restricted strictly to Firebase Auth admins
+//     (custom claim: request.auth.token.admin == true)
+//   - Admin SDK / Firebase CLI seed scripts bypass client security rules
+// Fields:
+//   - id: string (required, immutable, 1..128 chars, must equal restaurantId)
+//   - name: string (required, 1..80 chars)
+//   - category: string (required, 1..80 chars)
+//   - oneLineReview: string (required, 0..200 chars)
+//   - latitude: number (required, -90..90)
+//   - longitude: number (required, -180..180)
+//   - geohash: string (required, 0..20 chars)
+//   - clayMarkerType: string (required, enum: ramenHouse | izakayaRoof | riceBowlShop |
+//       grillHouse | pastaTerrace | pokeSalad | spicyPot)
+//   - heroColorValue: int (optional, 0..4294967295 ARGB 32-bit color integer)
+//   - rating: number (required, 0..5)
+//   - distanceMeters: int (required, 0..20050000)
+//   - status: map (required, exact keys only):
+//       - isOpenNow: bool (required)
+//       - hasNoWaiting: bool (required)
+//       - isSoloFriendly: bool (required)
+//       - openHoursText: string (required, 1..100 chars)
+//   - matchingTags: map (required, exact keys only):
+//       - partyTypes: list<string> (required, <= 10 items, enum: soloMale | soloFemale |
+//           coupleMF | duoSame | friends34 | group5Plus)
+//       - vibeTags: list<string> (required, <= 10 items, enum: lively | cozy |
+//           aesthetic | heartyFast)
+//       - tasteTags: list<string> (required, <= 10 items, enum: warmSoup |
+//           savoryGrilled | spicyKick | lightClean)
+//       - weatherTags: list<string> (required, <= 10 items, enum: rainy | sunny |
+//           chilly | hot)
+//       - seasonTags: list<string> (required, <= 10 items, enum: spring | summer |
+//           autumn | winter)
+//   - catComments: map (required, strict allowed keys):
+//       - signatureDish: string (required, 1..80 chars)
+//       - defaultTasteComment: string (required, 1..300 chars)
+//       - rainyComment: string (optional, 0..300 chars)
+//       - sunnyComment: string (optional, 0..300 chars)
+//       - chillyComment: string (optional, 0..300 chars)
+//       - hotComment: string (optional, 0..300 chars)
+//   - updatedAt: int (required, epoch millis > 0 and <= 4102444800000)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the request has a valid Firebase Auth session
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the caller holds the server-minted admin custom claim
+    function isAdmin() {
+      return isAuthenticated() &&
+        'admin' in request.auth.token &&
+        request.auth.token.admin == true;
+    }
+
+    // Validate all required top-level fields exist on the resulting document
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate the resulting document contains only allowed top-level fields
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Ensure immutable fields are not altered during an update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate string type and character length bounds
+    function isValidString(val, minLen, maxLen) {
+      return val is string &&
+        val.size() >= minLen &&
+        val.size() <= maxLen;
+    }
+
+    // Validate an optional string entry inside a map (if present, must satisfy length bounds)
+    function isValidOptionalMapString(mapData, key, minLen, maxLen) {
+      return !(key in mapData) || isValidString(mapData[key], minLen, maxLen);
+    }
+
+    // Validate a list of enum strings with a strict maximum element count
+    function isValidEnumList(val, allowedValues, maxSize) {
+      return val is list &&
+        val.size() <= maxSize &&
+        val.hasOnly(allowedValues);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidClayMarkerType(val) {
+      return val is string &&
+        val in [
+          'ramenHouse',
+          'izakayaRoof',
+          'riceBowlShop',
+          'grillHouse',
+          'pastaTerrace',
+          'pokeSalad',
+          'spicyPot'
+        ];
+    }
+
+    function isValidRestaurantStatus(status) {
+      return status is map &&
+        status.keys().hasAll([
+          'isOpenNow',
+          'hasNoWaiting',
+          'isSoloFriendly',
+          'openHoursText'
+        ]) &&
+        status.keys().hasOnly([
+          'isOpenNow',
+          'hasNoWaiting',
+          'isSoloFriendly',
+          'openHoursText'
+        ]) &&
+        status.isOpenNow is bool &&
+        status.hasNoWaiting is bool &&
+        status.isSoloFriendly is bool &&
+        isValidString(status.openHoursText, 1, 100);
+    }
+
+    function isValidMatchingTags(tags) {
+      return tags is map &&
+        tags.keys().hasAll([
+          'partyTypes',
+          'vibeTags',
+          'tasteTags',
+          'weatherTags',
+          'seasonTags'
+        ]) &&
+        tags.keys().hasOnly([
+          'partyTypes',
+          'vibeTags',
+          'tasteTags',
+          'weatherTags',
+          'seasonTags'
+        ]) &&
+        isValidEnumList(
+          tags.partyTypes,
+          ['soloMale', 'soloFemale', 'coupleMF', 'duoSame', 'friends34', 'group5Plus'],
+          10
+        ) &&
+        isValidEnumList(
+          tags.vibeTags,
+          ['lively', 'cozy', 'aesthetic', 'heartyFast'],
+          10
+        ) &&
+        isValidEnumList(
+          tags.tasteTags,
+          ['warmSoup', 'savoryGrilled', 'spicyKick', 'lightClean'],
+          10
+        ) &&
+        isValidEnumList(
+          tags.weatherTags,
+          ['rainy', 'sunny', 'chilly', 'hot'],
+          10
+        ) &&
+        isValidEnumList(
+          tags.seasonTags,
+          ['spring', 'summer', 'autumn', 'winter'],
+          10
+        );
+    }
+
+    function isValidCatComments(comments) {
+      return comments is map &&
+        comments.keys().hasAll([
+          'signatureDish',
+          'defaultTasteComment'
+        ]) &&
+        comments.keys().hasOnly([
+          'signatureDish',
+          'defaultTasteComment',
+          'rainyComment',
+          'sunnyComment',
+          'chillyComment',
+          'hotComment'
+        ]) &&
+        isValidString(comments.signatureDish, 1, 80) &&
+        isValidString(comments.defaultTasteComment, 1, 300) &&
+        isValidOptionalMapString(comments, 'rainyComment', 0, 300) &&
+        isValidOptionalMapString(comments, 'sunnyComment', 0, 300) &&
+        isValidOptionalMapString(comments, 'chillyComment', 0, 300) &&
+        isValidOptionalMapString(comments, 'hotComment', 0, 300);
+    }
+
+    function isValidRestaurant(data, restaurantId) {
+      return hasRequiredFields([
+          'id',
+          'name',
+          'category',
+          'oneLineReview',
+          'latitude',
+          'longitude',
+          'geohash',
+          'clayMarkerType',
+          'rating',
+          'distanceMeters',
+          'status',
+          'matchingTags',
+          'catComments',
+          'updatedAt'
+        ]) &&
+        hasOnlyAllowedFields([
+          'id',
+          'name',
+          'category',
+          'oneLineReview',
+          'latitude',
+          'longitude',
+          'geohash',
+          'clayMarkerType',
+          'heroColorValue',
+          'rating',
+          'distanceMeters',
+          'status',
+          'matchingTags',
+          'catComments',
+          'updatedAt'
+        ]) &&
+        isValidString(data.id, 1, 128) &&
+        data.id == restaurantId &&
+        isValidString(data.name, 1, 80) &&
+        isValidString(data.category, 1, 80) &&
+        isValidString(data.oneLineReview, 0, 200) &&
+        data.latitude is number &&
+        data.latitude >= -90 &&
+        data.latitude <= 90 &&
+        data.longitude is number &&
+        data.longitude >= -180 &&
+        data.longitude <= 180 &&
+        isValidString(data.geohash, 0, 20) &&
+        isValidClayMarkerType(data.clayMarkerType) &&
+        (!('heroColorValue' in data) ||
+          (data.heroColorValue is int &&
+           data.heroColorValue >= 0 &&
+           data.heroColorValue <= 4294967295)) &&
+        data.rating is number &&
+        data.rating >= 0 &&
+        data.rating <= 5 &&
+        data.distanceMeters is int &&
+        data.distanceMeters >= 0 &&
+        data.distanceMeters <= 20050000 &&
+        isValidRestaurantStatus(data.status) &&
+        isValidMatchingTags(data.matchingTags) &&
+        isValidCatComments(data.catComments) &&
+        data.updatedAt is int &&
+        data.updatedAt > 0 &&
+        data.updatedAt <= 4102444800000;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /restaurants/{restaurantId} {
+      // Public catalog read (covers both `get` and `list`) for mobile/web
+      // caching and `where('updatedAt', isGreaterThan: lastSyncMillis)` delta sync.
+      // Only non-PII restaurant catalog metadata is stored in this collection.
+      allow read: if true;
+
+      // Restrict client-side writes to verified admins with full schema validation
+      // on both create and update to prevent update bypasses and schema pollution.
+      allow create: if isAdmin() &&
+        isValidRestaurant(request.resource.data, restaurantId);
+
+      allow update: if isAdmin() &&
+        isValidRestaurant(request.resource.data, restaurantId) &&
+        areImmutableFieldsUnchanged(['id']);
+
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Default Deny-All Fallback
+    // ===============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

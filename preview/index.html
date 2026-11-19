@@ -1,0 +1,1899 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>オレグル (Oreguru) — 클레이모피즘 & 구루냥 인터랙티브 프로토타입</title>
+  <style>
+    :root {
+      --bg-ivory: #F1E6D2;
+      --bg-warm-sand: #E6D8BE;
+      --clay-cream: #FAF3E6;
+      --clay-cream-soft: #FBF5EA;
+      --clay-cream-stop: #EADBC3;
+      --clay-card-bottom: #EFE2CA;
+      --clay-orange: #FC7D4E;
+      --clay-orange-light: #FFA07A;
+      --clay-orange-dark: #D95222;
+      --clay-orange-soft: #FFEFE8;
+      --text-espresso: #2D241E;
+      --text-taupe: #6E5D53;
+      --text-muted: #A8988E;
+      --clay-mint: #4ECDC4;
+      --clay-mint-dark: #33A39B;
+      --clay-butter: #FFB830;
+      --rim-border: rgba(255, 255, 255, 0.65);
+      --input-stroke: #DECBB0;
+
+      /* Figma Claymorphism UI (node-id=0-1) 다중 Box-Shadow 토큰 */
+      /* 1. Modal / Panel / Card (node 2:140 + Drop Shadow 1) */
+      --clay-card:
+        0px 30px 60px 0px rgba(184, 163, 134, 0.45),
+        0px 1px 3px 0px rgba(0, 0, 0, 0.05),
+        inset -10px -10px 20px 0px rgba(212, 195, 168, 0.55),
+        inset 0px 15px 30px 0px rgba(255, 255, 255, 0.65);
+
+      /* 2. Light Clay Button / Chip (node 2:5 + 4:361) */
+      --clay-raised:
+        0px 20px 40px 0px rgba(198, 178, 149, 0.52),
+        0px 1px 3px 0px rgba(0, 0, 0, 0.05),
+        inset 3px 3px 10px 0px rgba(255, 255, 255, 0.78),
+        inset -4px -4px 8px 0px rgba(214, 198, 173, 0.75);
+
+      /* 3. Primary Orange Accent Button / Card (node 2:1151 + 2:149 + 4:363) */
+      --clay-accent:
+        0px 20px 40px 0px rgba(252, 125, 78, 0.46),
+        0px 10px 20px 0px rgba(217, 82, 34, 0.24),
+        inset 0px -3px 10px 0px rgba(0, 0, 0, 0.37),
+        inset 3px 1px 15px 0px rgba(255, 255, 255, 0.52),
+        inset -8px -8px 12px 0px rgba(0, 0, 0, 0.18);
+
+      /* 4. Recessed Input & Slot (node 2:144 + 2:147) */
+      --clay-recessed:
+        0px 1px 2px rgba(255, 255, 255, 0.7),
+        inset 2px 2px 6px 0px rgba(196, 178, 152, 0.45),
+        inset -3px -3px 8px 0px rgba(255, 255, 255, 0.72);
+
+      --clay-mint-shadow:
+        0px 18px 36px 0px rgba(78, 205, 196, 0.41),
+        0px 8px 16px 0px rgba(51, 163, 155, 0.22),
+        inset 0px -3px 10px 0px rgba(0, 0, 0, 0.28),
+        inset 3px 1px 15px 0px rgba(255, 255, 255, 0.55);
+
+      /* Figma Gradients */
+      --grad-card: linear-gradient(146.92deg, #FFFFFF 0.94%, var(--clay-cream-soft) 52.29%, var(--clay-card-bottom) 100%);
+      --grad-light-btn: linear-gradient(-17.05deg, var(--clay-cream-stop) 7.5%, #FFFFFF 100%);
+      --grad-orange-btn: linear-gradient(-20.78deg, var(--clay-orange-dark) 0%, var(--clay-orange) 55%, var(--clay-orange-light) 100%);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+      background: radial-gradient(circle at top left, #FAF3E6 0%, #E2D2B7 100%);
+      color: var(--text-espresso);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      gap: 28px;
+    }
+
+    /* 데스크톱 테스트 가이드 패널 */
+    .guide-panel {
+      width: 315px;
+      background: var(--clay-cream);
+      border-radius: 28px;
+      padding: 22px;
+      box-shadow: var(--clay-raised);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    @media (max-width: 820px) {
+      body { padding: 0; }
+      .guide-panel { display: none; }
+    }
+
+    .guide-badge {
+      display: inline-flex;
+      align-self: flex-start;
+      padding: 5px 12px;
+      border-radius: 14px;
+      background: var(--clay-orange-soft);
+      color: var(--clay-orange-dark);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .guide-panel h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: -0.4px;
+    }
+
+    .guide-list {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-taupe);
+      font-weight: 600;
+    }
+
+    .guide-list li + li { margin-top: 6px; }
+
+    .color-swatches {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--text-taupe);
+    }
+
+    .swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(45, 36, 30, 0.15);
+    }
+
+    /* 모바일 디바이스 프레임 */
+    .phone-frame {
+      position: relative;
+      width: 396px;
+      height: 820px;
+      max-height: 94vh;
+      background: var(--bg-ivory);
+      border-radius: 42px;
+      border: 8px solid var(--clay-cream);
+      box-shadow:
+        0 24px 60px rgba(45, 36, 30, 0.18),
+        0 6px 18px rgba(200, 182, 155, 0.5);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    @media (max-width: 820px) {
+      .phone-frame {
+        width: 100%;
+        height: 100vh;
+        max-height: none;
+        border-radius: 0;
+        border: none;
+      }
+    }
+
+    /* 2D 커스텀 저채도 아이보리(#F1E6D2) 지도 */
+    .map-canvas {
+      position: relative;
+      flex: 1;
+      background: var(--bg-ivory);
+      overflow: hidden;
+    }
+
+    .map-svg-bg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .my-location-dot {
+      position: absolute;
+      left: 44%;
+      top: 52%;
+      width: 20px;
+      height: 20px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: var(--clay-orange);
+      border: 3.5px solid #fff;
+      box-shadow: 0 0 0 8px rgba(252, 125, 78, 0.18);
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    /* 상단 헤더, 검색창 & 원탭 필터 */
+    .top-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 15;
+      padding: 14px 14px 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .top-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .clay-pill {
+      background: var(--grad-light-btn);
+      border-radius: 14px;
+      padding: 7px 12px;
+      box-shadow: var(--clay-raised);
+      border: 1px solid var(--rim-border);
+      font-size: 13px;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      color: var(--text-espresso);
+      transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .clay-pill:active { transform: scale(0.95); }
+
+    /* 검색창 (더 각진 12px 클레이 인풋) */
+    .search-box {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--grad-card);
+      border: 1px solid var(--input-stroke);
+      border-radius: 12px;
+      padding: 10px 14px;
+      box-shadow: var(--clay-card);
+    }
+
+    .search-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--text-espresso);
+      user-select: text;
+    }
+
+    .search-input::placeholder {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .search-clear-btn {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: none;
+      background: var(--bg-warm-sand);
+      color: var(--text-taupe);
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .filter-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 3px 2px 6px;
+      scrollbar-width: none;
+      pointer-events: auto;
+    }
+    .filter-scroll::-webkit-scrollbar { display: none; }
+
+    .filter-chip {
+      flex: 0 0 auto;
+      background: var(--grad-light-btn);
+      border-radius: 14px;
+      padding: 8px 13px;
+      box-shadow: var(--clay-raised);
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-espresso);
+      cursor: pointer;
+      border: 1px solid var(--rim-border);
+      transition: all 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .filter-chip.active {
+      background: var(--grad-orange-btn);
+      box-shadow: var(--clay-accent);
+      color: #FFFFFF;
+      border-color: var(--rim-border);
+      transform: scale(1.03);
+    }
+
+    .quick-search-strip {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 2px 6px;
+      scrollbar-width: none;
+      pointer-events: auto;
+    }
+    .quick-search-strip::-webkit-scrollbar { display: none; }
+
+    .quick-result-chip {
+      flex: 0 0 auto;
+      background: linear-gradient(145deg, #FFFBF2, var(--clay-cream));
+      border-radius: 12px;
+      padding: 7px 12px;
+      box-shadow: var(--clay-raised);
+      border: 1.3px solid rgba(252, 125, 78, 0.45);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      color: var(--text-espresso);
+    }
+
+    /* 3D 클레이 음식점 마커 */
+    .clay-marker {
+      position: absolute;
+      transform: translate(-50%, -62%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      z-index: 6;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .clay-marker:hover { transform: translate(-50%, -66%) scale(1.06); }
+    .clay-marker.selected {
+      transform: translate(-50%, -68%) scale(1.16);
+      z-index: 12;
+    }
+
+    .marker-house {
+      position: relative;
+      padding: 4px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, #FFFBF2, var(--clay-cream));
+      box-shadow: var(--clay-raised);
+      border: 2px solid rgba(255, 255, 255, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .clay-marker.selected .marker-house {
+      background: linear-gradient(145deg, #FF8F63, var(--clay-orange));
+      box-shadow: var(--clay-accent);
+      border-color: #FFFFFF;
+    }
+
+    .clay-marker.is-candidate .marker-house {
+      border-color: var(--clay-orange);
+    }
+
+    .marker-roof {
+      width: 44px;
+      height: 11px;
+      border-radius: 9px 9px 3px 3px;
+    }
+
+    .marker-body {
+      width: 42px;
+      height: 30px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 19px;
+    }
+
+    .marker-paw-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 21px;
+      height: 21px;
+      border-radius: 8px;
+      background: linear-gradient(145deg, #FF8F63, var(--clay-orange));
+      box-shadow: var(--clay-accent);
+      border: 1.5px solid #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+    }
+
+    .marker-label {
+      margin-top: 4px;
+      padding: 2px 8px;
+      border-radius: 8px;
+      background: rgba(250, 243, 230, 0.95);
+      box-shadow: 0 3px 6px rgba(45, 36, 30, 0.14);
+      font-size: 10.5px;
+      font-weight: 800;
+      color: var(--text-espresso);
+      white-space: nowrap;
+    }
+
+    .clay-marker.selected .marker-label {
+      background: var(--clay-orange);
+      color: #fff;
+    }
+
+    /* 우측 1열 세로 장바구니형 후보지 트레이 */
+    .right-cart-dock {
+      position: absolute;
+      right: 12px;
+      bottom: 20px;
+      width: 78px;
+      z-index: 22;
+      background: var(--grad-card);
+      border: 1px solid var(--rim-border);
+      border-radius: 20px;
+      padding: 10px 8px;
+      box-shadow: var(--clay-card);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      transition: bottom 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+      animation: slideInRight 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .right-cart-dock.sheet-open {
+      bottom: 318px;
+    }
+
+    @keyframes slideInRight {
+      from { opacity: 0; transform: translateX(24px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .cart-counter {
+      padding: 3px 8px;
+      border-radius: 8px;
+      background: var(--clay-orange-soft);
+      color: var(--clay-orange-dark);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .cart-vertical-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 268px;
+      overflow-y: auto;
+      padding: 4px 2px;
+      scrollbar-width: none;
+    }
+    .cart-vertical-list::-webkit-scrollbar { display: none; }
+
+    .cart-item-tile {
+      position: relative;
+      width: 56px;
+      padding: 5px 4px;
+      border-radius: 12px;
+      background: linear-gradient(155deg, #FFFBF2, var(--clay-cream));
+      box-shadow: var(--clay-raised);
+      border: 1.4px solid rgba(252, 125, 78, 0.65);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      cursor: pointer;
+    }
+
+    .cart-item-emoji {
+      width: 34px;
+      height: 29px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+    }
+
+    .cart-item-name {
+      width: 100%;
+      font-size: 9.5px;
+      font-weight: 800;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-espresso);
+    }
+
+    .slot-remove {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--text-espresso);
+      border: 1.5px solid #fff;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .cart-go-btn {
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      padding: 8px 4px;
+      background: var(--grad-orange-btn);
+      box-shadow: var(--clay-accent);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      transition: transform 0.12s;
+    }
+    .cart-go-btn:active { transform: scale(0.95); }
+
+    /* 하단 가게 상세 바텀 시트 (가게 클릭 시에만 노출) */
+    .bottom-dock {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      z-index: 25;
+    }
+
+    .clay-card-panel {
+      background: var(--grad-card);
+      border: 1px solid var(--rim-border);
+      border-radius: 20px;
+      padding: 14px;
+      box-shadow: var(--clay-card);
+      animation: slideUp 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .clay-cta-btn {
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      padding: 13px 16px;
+      font-size: 14px;
+      font-weight: 800;
+      color: #fff;
+      background: var(--grad-orange-btn);
+      box-shadow: var(--clay-accent);
+      cursor: pointer;
+      transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.15s;
+    }
+
+    .clay-cta-btn:active:not(:disabled) { transform: scale(0.96); }
+
+    .clay-secondary-btn {
+      width: 100%;
+      border: 1px solid var(--rim-border);
+      border-radius: 12px;
+      padding: 13px 14px;
+      font-size: 13.5px;
+      font-weight: 800;
+      color: var(--text-espresso);
+      background: var(--grad-light-btn);
+      box-shadow: var(--clay-raised);
+      cursor: pointer;
+      transition: transform 0.12s;
+    }
+    .clay-secondary-btn:active { transform: scale(0.96); }
+
+    .clay-mint-btn {
+      background: linear-gradient(145deg, #69DDD5, var(--clay-mint));
+      box-shadow: var(--clay-mint-shadow);
+    }
+
+    .sheet-handle {
+      width: 40px;
+      height: 4px;
+      border-radius: 8px;
+      background: #C8B69B;
+      margin: 0 auto 10px;
+    }
+
+    .sheet-top {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .sheet-thumb {
+      width: 78px;
+      height: 78px;
+      border-radius: 14px;
+      box-shadow: var(--clay-recessed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      flex-shrink: 0;
+    }
+
+    .status-tags {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .mini-badge {
+      padding: 2px 8px;
+      border-radius: 7px;
+      font-size: 10.5px;
+      font-weight: 800;
+    }
+
+    .sheet-review {
+      margin: 12px 0;
+      padding: 11px 13px;
+      border-radius: 12px;
+      background: var(--bg-warm-sand);
+      box-shadow: var(--clay-recessed);
+      font-size: 12.5px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
+    .sheet-actions {
+      display: grid;
+      grid-template-columns: 4fr 6fr;
+      gap: 10px;
+    }
+
+    /* 구루냥 모달 */
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(45, 36, 30, 0.34);
+      backdrop-filter: blur(4px);
+      z-index: 40;
+      display: none;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+
+    .modal-backdrop.open { display: flex; }
+
+    .modal-sheet {
+      height: 91%;
+      background: var(--bg-ivory);
+      border-radius: 26px 26px 0 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: modalUp 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    @keyframes modalUp {
+      from { transform: translateY(45px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .modal-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px 6px;
+    }
+
+    .icon-clay-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      border: none;
+      background: linear-gradient(145deg, #FFFBF2, var(--clay-cream));
+      box-shadow: var(--clay-raised);
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--text-espresso);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 16px 26px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      scrollbar-width: none;
+    }
+    .modal-body::-webkit-scrollbar { display: none; }
+
+    /* 턱시도 고양이 구루냥 스테이지 */
+    .cat-stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .cat-aura {
+      position: relative;
+      width: 118px;
+      height: 118px;
+      border-radius: 50%;
+      background: var(--bg-warm-sand);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.25s;
+    }
+    .cat-aura.licking { background: var(--clay-orange-soft); }
+
+    .cat-svg {
+      width: 114px;
+      height: 114px;
+      animation: catBob 1.6s ease-in-out infinite alternate;
+      transform-origin: center;
+    }
+
+    @keyframes catBob {
+      from { transform: translateY(0px); }
+      to { transform: translateY(-5px); }
+    }
+
+    .cat-svg.poking {
+      animation: catPoke 0.34s ease-in-out infinite alternate;
+    }
+    @keyframes catPoke {
+      from { transform: translateY(0) rotate(-4deg); }
+      to { transform: translateY(-6px) rotate(4deg); }
+    }
+
+    .speech-bubble {
+      width: 100%;
+      background: var(--grad-card);
+      border-radius: 14px;
+      padding: 12px 15px;
+      box-shadow: var(--clay-card);
+      border: 1px solid var(--rim-border);
+      text-align: center;
+    }
+
+    .speech-bubble.licking-highlight {
+      border-color: rgba(252, 125, 78, 0.65);
+    }
+
+    .decision-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      background: var(--clay-orange-soft);
+      color: var(--clay-orange-dark);
+      font-size: 11px;
+      font-weight: 900;
+      margin-bottom: 6px;
+    }
+
+    .speech-text {
+      font-size: 13.5px;
+      font-weight: 700;
+      line-height: 1.45;
+      color: var(--text-espresso);
+    }
+
+    /* 2열 대형 직사각형 클레이 카드 그리드 */
+    .step-header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .step-badge {
+      align-self: flex-start;
+      padding: 3px 9px;
+      border-radius: 10px;
+      background: var(--clay-orange-soft);
+      color: var(--clay-orange-dark);
+      font-size: 10.5px;
+      font-weight: 900;
+    }
+
+    .step-title {
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: -0.4px;
+    }
+
+    .step-sub {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-taupe);
+    }
+
+    .rect-grid-2col {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .rect-choice-card {
+      min-height: 146px;
+      border-radius: 14px;
+      padding: 12px;
+      background: var(--grad-card);
+      box-shadow: var(--clay-card);
+      border: 1px solid var(--rim-border);
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+      text-align: center;
+      transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .rect-choice-card:hover { transform: translateY(-2px); }
+    .rect-choice-card:active { transform: scale(0.95); }
+
+    .rect-choice-card.selected {
+      background: var(--grad-orange-btn);
+      box-shadow: var(--clay-accent);
+      border-color: rgba(255, 255, 255, 0.85);
+      color: #fff;
+    }
+
+    .rect-visual {
+      flex: 6;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+
+    .rect-title {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      margin-bottom: 2px;
+    }
+
+    .rect-sub {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-taupe);
+      line-height: 1.25;
+    }
+    .rect-choice-card.selected .rect-sub { color: rgba(255, 255, 255, 0.9); }
+
+    /* 온전히 맡기기 대형 배너 버튼 */
+    .entrust-banner {
+      border: none;
+      width: 100%;
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: var(--grad-orange-btn);
+      box-shadow: var(--clay-accent);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      text-align: left;
+      transition: transform 0.12s;
+    }
+    .entrust-banner:active { transform: scale(0.96); }
+
+    .entrust-icon-box {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 21px;
+      flex-shrink: 0;
+    }
+
+    /* 툭툭 건드리는 카드 스테이지 */
+    .poking-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+      padding: 10px 0;
+    }
+
+    .poking-card {
+      width: 148px;
+      padding: 14px;
+      border-radius: 14px;
+      background: var(--grad-card);
+      border: 1px solid var(--rim-border);
+      box-shadow: var(--clay-card);
+      text-align: center;
+      transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .poking-card.poked {
+      background: var(--grad-orange-btn);
+      box-shadow: var(--clay-accent);
+      color: #fff;
+      transform: scale(1.12) rotate(3deg);
+    }
+
+    /* 최종 결과 카드 */
+    .result-card {
+      border-radius: 20px;
+      padding: 18px;
+      background: var(--grad-card);
+      box-shadow: var(--clay-card);
+      border: 2px solid rgba(252, 125, 78, 0.72);
+      text-align: center;
+    }
+
+    .result-hero {
+      position: relative;
+      width: 90px;
+      height: 90px;
+      margin: 0 auto 12px;
+      border-radius: 14px;
+      box-shadow: var(--clay-recessed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 46px;
+    }
+
+    .pick-ribbon {
+      position: absolute;
+      top: -9px;
+      right: -12px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: var(--clay-orange);
+      color: #fff;
+      font-size: 10.5px;
+      font-weight: 900;
+      box-shadow: var(--clay-accent);
+    }
+
+    .toast {
+      position: absolute;
+      top: 162px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--text-espresso);
+      color: #fff;
+      padding: 9px 16px;
+      border-radius: 18px;
+      font-size: 12.5px;
+      font-weight: 700;
+      z-index: 60;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <aside class="guide-panel">
+    <span class="guide-badge">オレグル · 인터랙티브 프로토타입</span>
+    <h2>검색 · 장바구니 · 구루냥 테스트</h2>
+    <ol class="guide-list">
+      <li>처음엔 하단 후보지 창이 보이지 않아 <strong>지도 시야가 넓습니다</strong>.</li>
+      <li>상단 <strong>검색창</strong>(예: <code>라멘</code>, <code>파전</code>, <code>피자</code>)과 <strong>원탭 필터 4종</strong>으로 맛집을 찾아보세요.</li>
+      <li>가게 마커(또는 검색 결과)를 눌러 <strong>[🛒 후보 장바구니 담기]</strong>를 누르면 <strong>오른쪽에 1열 세로</strong>로 담깁니다.</li>
+      <li>우측 장바구니의 <strong>[😼 골라줘!]</strong>를 눌러 <strong>트랙 A(취향 유도)</strong> 또는 <strong>트랙 B(날씨·계절 일임 + 근거 없으면 랜덤)</strong>를 테스트하세요.</li>
+      <li>결과 화면에서 <strong>[여긴 안 땡겨! 빼고 다시 골라줘]</strong> 시 방금 고른 가게는 영구 제외됩니다.</li>
+    </ol>
+    <div class="color-swatches">
+      <div class="swatch" style="background:#F1E6D2"></div> #F1E6D2
+      <div class="swatch" style="background:#FC7D4E"></div> #FC7D4E
+      <div class="swatch" style="background:#2D241E"></div> #2D241E
+    </div>
+  </aside>
+
+  <main class="phone-frame">
+    <div id="toast" class="toast"></div>
+
+    <!-- 지도 영역 -->
+    <div id="mapCanvas" class="map-canvas">
+      <svg class="map-svg-bg" viewBox="0 0 396 820" preserveAspectRatio="none">
+        <!-- 저채도 공원 길 -->
+        <path d="M 54 0 L 98 0 L 214 820 L 166 820 Z" fill="#DCE5C9" />
+        <!-- 평면 2D 일반 건물 (입체 그림자 없음 -> 맛집 마커만 부각) -->
+        <rect x="24" y="210" width="58" height="44" rx="8" fill="#E5D7BD" />
+        <rect x="220" y="205" width="70" height="50" rx="8" fill="#E5D7BD" />
+        <rect x="255" y="345" width="62" height="46" rx="8" fill="#E5D7BD" />
+        <rect x="32" y="445" width="62" height="56" rx="8" fill="#E5D7BD" />
+        <rect x="214" y="510" width="78" height="50" rx="8" fill="#E5D7BD" />
+        <rect x="128" y="230" width="54" height="42" rx="8" fill="#E5D7BD" />
+        <!-- 2D 도로 -->
+        <line x1="0" y1="312" x2="396" y2="352" stroke="#FAF3E6" stroke-width="14" stroke-linecap="round" />
+        <line x1="0" y1="525" x2="396" y2="476" stroke="#FAF3E6" stroke-width="14" stroke-linecap="round" />
+        <line x1="182" y1="0" x2="254" y2="820" stroke="#FAF3E6" stroke-width="8" stroke-linecap="round" />
+        <line x1="95" y1="165" x2="338" y2="245" stroke="#FAF3E6" stroke-width="8" stroke-linecap="round" />
+        <!-- 500m 반경 링 -->
+        <circle cx="174" cy="426" r="134" fill="none" stroke="rgba(252,125,78,0.25)" stroke-width="1.8" stroke-dasharray="6 5" />
+      </svg>
+
+      <div class="my-location-dot" title="내 현재 위치"></div>
+
+      <!-- 상단 브랜드 + 검색창 + 원탭 필터 4개 (날씨는 백그라운드 실시간 조회, 화면 비노출) -->
+      <div class="top-overlay">
+        <div class="top-row">
+          <div class="clay-pill" style="cursor:default">
+            <span>😼</span><span>オレグル</span>
+          </div>
+        </div>
+
+        <!-- 가게/메뉴 검색창 -->
+        <div class="search-box" onclick="event.stopPropagation()">
+          <span style="font-size:16px">🔍</span>
+          <input
+            id="searchInput"
+            class="search-input"
+            type="text"
+            placeholder="가게 이름, 메뉴(라멘, 파전 등) 검색..."
+          />
+          <button id="searchClearBtn" class="search-clear-btn" style="display:none">✕</button>
+        </div>
+
+        <div id="filterBar" class="filter-scroll"></div>
+        <div id="quickSearchStrip" class="quick-search-strip" style="display:none"></div>
+      </div>
+
+      <!-- 3D 클레이 맛집 마커들 -->
+      <div id="markersLayer"></div>
+
+      <!-- 우측 1열 세로 장바구니 트레이 (후보 1개 이상일 때만 표시) -->
+      <div id="rightCartDock"></div>
+
+      <!-- 하단 가게 상세 바텀 시트 (가게 선택 시에만 표시) -->
+      <div id="bottomDock" class="bottom-dock"></div>
+    </div>
+
+    <!-- 구루냥 결정 모달 -->
+    <div id="catModal" class="modal-backdrop">
+      <div class="modal-sheet">
+        <div class="modal-nav">
+          <button id="modalBackBtn" class="icon-clay-btn" style="visibility:hidden">‹</button>
+          <div style="width:42px;height:5px;border-radius:10px;background:#C8B69B"></div>
+          <button id="modalCloseBtn" class="icon-clay-btn">✕</button>
+        </div>
+        <div id="modalBody" class="modal-body"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const WEATHERS = [
+      { id: 'rainy', label: '비 오는 날', emoji: '☔', prefix: '오늘은 비가 오니까' },
+      { id: 'sunny', label: '화창한 날', emoji: '☀️', prefix: '오늘처럼 화창한 날엔' },
+      { id: 'chilly', label: '쌀쌀한 날', emoji: '❄️', prefix: '바람이 쌀쌀한 날엔' },
+      { id: 'hot', label: '무더운 날', emoji: '🌴', prefix: '날이 꽤 후덥지근하니까' },
+    ];
+
+    const SEASONS = [
+      { id: 'spring', label: '봄', emoji: '🌸' },
+      { id: 'summer', label: '여름', emoji: '🏖️' },
+      { id: 'autumn', label: '가을', emoji: '🍂' },
+      { id: 'winter', label: '겨울', emoji: '⛄' },
+    ];
+
+    const FILTERS = [
+      { id: 'openNow', label: '🟢 지금 영업중' },
+      { id: 'soloFriendly', label: '🎧 혼밥 가능' },
+      { id: 'noWaiting', label: '⚡ 웨이팅 없음' },
+      { id: 'within500m', label: '📍 내 주변 500m' },
+    ];
+
+    const PARTIES = [
+      { id: 'soloMale', title: '혼자 야무지게 (남)', sub: '혼밥하기 딱 좋은 카운터석', emoji: '🎧🍜', badge: '혼자 남', tint: '#FFEFE8', isSolo: true },
+      { id: 'soloFemale', title: '혼자 여유롭게 (여)', sub: '깔끔하고 아늑한 1인 미식', emoji: '✨🥗', badge: '혼자 여', tint: '#FFF3DF', isSolo: true },
+      { id: 'coupleMF', title: '설레는 둘이서 (남녀)', sub: '분위기 좋은 데이트 스팟', emoji: '💑🕯️', badge: '커플 2인', tint: '#FFEBF0', isSolo: false },
+      { id: 'duoSame', title: '단짝이랑 둘이 (2인)', sub: '수다 떨며 맛있는 거 먹기', emoji: '👯‍♀️🍕', badge: '단짝 2인', tint: '#EAF7F6', isSolo: false },
+      { id: 'friends34', title: '친구들이랑 (3~4인)', sub: '여럿이 시켜 나눠먹기 좋은 곳', emoji: '🍻🥘', badge: '친구 3~4인', tint: '#F3EEFF', isSolo: false },
+      { id: 'group5Plus', title: '왁자지껄 단체 (5인+)', sub: '넓은 자리 완비! 회식·모임', emoji: '🎉🥩', badge: '단체 5인+', tint: '#E9F4FB', isSolo: false },
+    ];
+
+    const VIBES = [
+      { id: 'lively', title: '시끌벅적 신나게', sub: '활기찬 에너지 & 한잔 분위기', emoji: '🔥🍻', tint: '#FFEFE8' },
+      { id: 'cozy', title: '조용하고 아늑하게', sub: '도란도란 대화하기 좋은 곳', emoji: '🕯️☕', tint: '#FFF4E0' },
+      { id: 'aesthetic', title: '감성 한 스푼 예쁜 곳', sub: '사진 찍기 좋고 인테리어 맛집', emoji: '📸🌷', tint: '#FFEBF0' },
+      { id: 'heartyFast', title: '배고파! 푸짐·빠르게', sub: '기다림 적고 양으로 승부', emoji: '⚡🍖', tint: '#EAF7F6' },
+    ];
+
+    const TASTES = [
+      { id: 'warmSoup', title: '뜨끈하고 깊은 국물', sub: '속까지 확 풀리는 전골·라멘', emoji: '🍲💨', tint: '#FFEFE8' },
+      { id: 'savoryGrilled', title: '고소·바삭 육즙 폭발', sub: '노릇한 구이·튀김·파전류', emoji: '🥩🍤', tint: '#FFF4E0' },
+      { id: 'spicyKick', title: '스트레스 풀리는 매콤', sub: '입맛 돋우는 화끈한 감칠맛', emoji: '🌶️🔥', tint: '#FFEBF0' },
+      { id: 'lightClean', title: '깔끔하고 담백한 한 끼', sub: '부담 없이 산뜻한 샐러드·소바', emoji: '🥗🍋', tint: '#EAF7F6' },
+    ];
+
+    const RESTAURANTS = [
+      {
+        id: 'rest_01', name: '연남 빗소리 주막', category: '한식주점 · 전/막걸리',
+        oneLineReview: '빗소리 들으며 바삭한 해물파전에 밤막걸리 한 잔',
+        x: 42, y: 40, emoji: '🍶', roof: '#7B61FF', heroColor: '#FFEFE8', rating: 4.8, distanceMeters: 280,
+        isOpenNow: true, hasNoWaiting: true, isSoloFriendly: false, openHours: '17:00 - 01:00',
+        parties: ['coupleMF', 'duoSame', 'friends34', 'group5Plus'],
+        vibes: ['lively', 'cozy'], tastes: ['savoryGrilled', 'spicyKick'],
+        weathers: ['rainy', 'chilly'], seasons: ['spring', 'autumn', 'winter'],
+        signatureDish: '바삭한 해물파전',
+        weatherComments: {
+          rainy: '오늘은 비가 오니까 전이 있는 이 가게가 맛있어 보이는구나! 츄릅~ 🐾',
+          chilly: '바람이 쌀쌀한 날엔 뜨끈한 김치전골에 파전이 최고지! 츄릅~ 🐾',
+        },
+        defaultTasteComment: '오늘 분위기에 겉바속촉 해물파전 한 입이면 게임 끝이라구! 😼',
+      },
+      {
+        id: 'rest_02', name: '오레노 돈코츠 라멘', category: '일식 · 자가제면 라멘',
+        oneLineReview: '18시간 푹 고아낸 진한 사골 육수와 반숙 계란',
+        x: 20, y: 52, emoji: '🍜', roof: '#FF8E5E', heroColor: '#FFF4E0', rating: 4.9, distanceMeters: 190,
+        isOpenNow: true, hasNoWaiting: false, isSoloFriendly: true, openHours: '11:30 - 21:30',
+        parties: ['soloMale', 'soloFemale', 'coupleMF', 'duoSame'],
+        vibes: ['cozy', 'heartyFast'], tastes: ['warmSoup', 'savoryGrilled'],
+        weathers: ['rainy', 'chilly'], seasons: ['autumn', 'winter'],
+        signatureDish: '진한 돈코츠 라멘',
+        weatherComments: {
+          rainy: '비 맞고 으슬으슬할 땐 뜨끈한 돈코츠 국물 한 모금이 보약이지! 츄릅~ 🐾',
+          chilly: '날이 이렇게 쌀쌀하니 김 모락모락 나는 라멘이 땡기는구나! 츄릅~ 🐾',
+        },
+        defaultTasteComment: '혼자서도 둘이서도 후루룩 면치기하기 딱 좋은 성지라구! 😼',
+      },
+      {
+        id: 'rest_03', name: '햇살 테라스 포케', category: '캐주얼 · 냉소바/포케',
+        oneLineReview: '통창 햇살 아래 시원한 살얼음 메밀소바와 아보카도 볼',
+        x: 68, y: 36, emoji: '🥗', roof: '#4ECDC4', heroColor: '#EAF7F6', rating: 4.7, distanceMeters: 420,
+        isOpenNow: true, hasNoWaiting: true, isSoloFriendly: true, openHours: '11:00 - 21:00',
+        parties: ['soloMale', 'soloFemale', 'coupleMF', 'duoSame'],
+        vibes: ['aesthetic', 'cozy'], tastes: ['lightClean'],
+        weathers: ['sunny', 'hot'], seasons: ['spring', 'summer'],
+        signatureDish: '살얼음 냉소바와 포케',
+        weatherComments: {
+          sunny: '햇살이 쨍하니 테라스에서 산뜻한 포케 먹기 딱 좋은 날이구만! 츄릅~ 🐾',
+          hot: '더워서 입맛 없을 땐 살얼음 동동 냉소바가 정답이지! 츄릅~ 🐾',
+        },
+        defaultTasteComment: '속 편하고 예쁘게 잘 차려진 한 끼 원한다면 여기라구! 😼',
+      },
+      {
+        id: 'rest_04', name: '화로구이 숯불갈비집', category: '육류 · 숙성 숯불구이',
+        oneLineReview: '초벌해서 나와 굽기 편한 육즙 가득 숙성 목살',
+        x: 62, y: 63, emoji: '🥩', roof: '#E85D75', heroColor: '#FFEBF0', rating: 4.8, distanceMeters: 470,
+        isOpenNow: true, hasNoWaiting: true, isSoloFriendly: false, openHours: '16:00 - 23:30',
+        parties: ['coupleMF', 'friends34', 'group5Plus'],
+        vibes: ['lively', 'heartyFast'], tastes: ['savoryGrilled'],
+        weathers: ['sunny', 'chilly'], seasons: ['spring', 'autumn', 'winter'],
+        signatureDish: '육즙 가득 숙성 숯불목살',
+        weatherComments: {
+          chilly: '찬 바람 불 땐 숯불 앞에서 노릇노릇 고기 굽는 게 최고지! 츄릅~ 🐾',
+          sunny: '오늘 기분도 좋은데 지글지글 고기 파티 어때? 입에 침이 고이네! 츄릅~ 🐾',
+        },
+        defaultTasteComment: '든든하게 기름칠하고 싶을 땐 이 집 고기만 한 게 없다구! 😼',
+      },
+      {
+        id: 'rest_05', name: '매콤낙지 직화 덮밥', category: '한식 · 직화덮밥',
+        oneLineReview: '불향 입힌 탱글한 낙지와 계란찜 조합이 환상적',
+        x: 18, y: 34, emoji: '🍛', roof: '#FFB830', heroColor: '#FFEFE8', rating: 4.6, distanceMeters: 350,
+        isOpenNow: true, hasNoWaiting: true, isSoloFriendly: true, openHours: '11:00 - 22:00',
+        parties: ['soloMale', 'soloFemale', 'duoSame', 'friends34'],
+        vibes: ['heartyFast', 'lively'], tastes: ['spicyKick', 'savoryGrilled'],
+        weathers: ['hot', 'rainy'], seasons: ['summer', 'autumn'],
+        signatureDish: '직화 불향 낙지덮밥',
+        weatherComments: {
+          hot: '이열치열! 후끈한 날엔 화끈한 직화 낙지로 땀 쫙 빼줘야지! 츄릅~ 🐾',
+          rainy: '비 와서 축 처질 땐 매콤한 불향 낙지 한 그릇으로 기분 전환! 츄릅~ 🐾',
+        },
+        defaultTasteComment: '스트레스 확 날려버리는 감칠맛 매콤함이라구! 😼',
+      },
+      {
+        id: 'rest_06', name: '달빛 모츠나베', category: '이자카야 · 대창전골',
+        oneLineReview: '고소한 대창과 부추가 가득 올라간 보글보글 나베',
+        x: 31, y: 72, emoji: '🍲', roof: '#FC7D4E', heroColor: '#F3EEFF', rating: 4.9, distanceMeters: 620,
+        isOpenNow: true, hasNoWaiting: false, isSoloFriendly: false, openHours: '17:30 - 02:00',
+        parties: ['coupleMF', 'duoSame', 'friends34', 'group5Plus'],
+        vibes: ['cozy', 'aesthetic'], tastes: ['warmSoup', 'savoryGrilled'],
+        weathers: ['rainy', 'chilly'], seasons: ['autumn', 'winter'],
+        signatureDish: '보글보글 모츠나베',
+        weatherComments: {
+          chilly: '찬 바람 솔솔 부니 보글보글 끓는 모츠나베 국물이 미치도록 땡기네! 츄릅~ 🐾',
+          rainy: '비 오는 밤엔 따뜻한 전골 냄비 앞에 마주 앉는 게 로망이지! 츄릅~ 🐾',
+        },
+        defaultTasteComment: '진한 국물 한 스푼 떠먹으면 바로 감탄사가 터진다구! 😼',
+      },
+      {
+        id: 'rest_07', name: '골목 화덕 피자리아', category: '양식 · 나폴리 화덕피자',
+        oneLineReview: '쫄깃한 도우 위에 생바질과 부라타 치즈가 통째로',
+        x: 50, y: 28, emoji: '🍕', roof: '#4ECDC4', heroColor: '#FFEFE8', rating: 4.7, distanceMeters: 480,
+        isOpenNow: true, hasNoWaiting: true, isSoloFriendly: false, openHours: '12:00 - 22:00',
+        parties: ['coupleMF', 'duoSame', 'friends34', 'group5Plus'],
+        vibes: ['aesthetic', 'lively'], tastes: ['savoryGrilled', 'lightClean'],
+        weathers: ['sunny'], seasons: ['spring', 'summer', 'autumn'],
+        signatureDish: '부라타 치즈 화덕피자',
+        weatherComments: {
+          sunny: '화창한 날엔 노릇한 화덕피자에 청량한 에이드 한 잔이 그림이지! 츄릅~ 🐾',
+        },
+        defaultTasteComment: '분위기도 맛도 실패 없는 감성 픽이라구! 😼',
+      },
+      {
+        id: 'rest_08', name: '심야 카츠 카레 공방', category: '일식 · 수제 카츠카레',
+        oneLineReview: '바삭한 안심카츠와 72시간 숙성 향신료 카레의 조화',
+        x: 72, y: 50, emoji: '🍛', roof: '#FFB830', heroColor: '#FFF4E0', rating: 4.6, distanceMeters: 440,
+        isOpenNow: false, hasNoWaiting: true, isSoloFriendly: true, openHours: '17:00 - 22:30 (준비중)',
+        parties: ['soloMale', 'soloFemale', 'duoSame'],
+        vibes: ['heartyFast', 'cozy'], tastes: ['savoryGrilled', 'spicyKick'],
+        weathers: ['sunny', 'chilly'], seasons: ['spring', 'autumn', 'winter'],
+        signatureDish: '수제 안심카츠 카레',
+        weatherComments: {
+          chilly: '조금 쌀쌀한 날엔 진하고 따뜻한 향신료 카레 한 접시가 딱이지! 츄릅~ 🐾',
+        },
+        defaultTasteComment: '바삭한 돈카츠에 진한 카레 조합은 언제 먹어도 반칙이라구! 😼',
+      },
+    ];
+
+    const state = {
+      activeFilters: new Set(),
+      searchQuery: '',
+      selectedRestaurantId: null,
+      candidates: [],
+      weatherIdx: 0,
+      seasonIdx: 2,
+      cat: {
+        isOpen: false,
+        step: 'selectParty',
+        pose: 'idleSmirk',
+        track: 'guided',
+        selectedParty: null,
+        selectedVibe: null,
+        selectedTaste: null,
+        rejectedIds: new Set(),
+        picked: null,
+        dialogue: '',
+        badgeText: '',
+        pokeIdx: 0,
+        pokeTimer: null,
+      }
+    };
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => el.classList.remove('show'), 2000);
+    }
+
+    function getFilteredRestaurants() {
+      const q = state.searchQuery.trim().toLowerCase();
+      return RESTAURANTS.filter(r => {
+        if (state.activeFilters.has('openNow') && !r.isOpenNow) return false;
+        if (state.activeFilters.has('soloFriendly') && !r.isSoloFriendly) return false;
+        if (state.activeFilters.has('noWaiting') && !r.hasNoWaiting) return false;
+        if (state.activeFilters.has('within500m') && r.distanceMeters > 500) return false;
+        if (q) {
+          const hay = `${r.name} ${r.category} ${r.signatureDish} ${r.oneLineReview}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderTopControls() {
+      document.getElementById('searchClearBtn').style.display = state.searchQuery ? 'flex' : 'none';
+
+      const filterBar = document.getElementById('filterBar');
+      filterBar.innerHTML = '';
+      FILTERS.forEach(f => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-chip' + (state.activeFilters.has(f.id) ? ' active' : '');
+        btn.textContent = f.label;
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          if (state.activeFilters.has(f.id)) state.activeFilters.delete(f.id);
+          else state.activeFilters.add(f.id);
+          renderAllMapUI();
+        };
+        filterBar.appendChild(btn);
+      });
+
+      const strip = document.getElementById('quickSearchStrip');
+      if (state.searchQuery.trim()) {
+        const matches = getFilteredRestaurants();
+        strip.style.display = 'flex';
+        if (matches.length === 0) {
+          strip.innerHTML = `<div class="quick-result-chip" style="cursor:default;color:var(--text-taupe)">검색 결과 없음</div>`;
+        } else {
+          strip.innerHTML = matches.map(r => `
+            <button class="quick-result-chip" onclick="selectFromSearch('${r.id}', event)">
+              <span>${r.emoji}</span>
+              <span>${r.name}</span>
+              <span style="color:var(--clay-orange-dark)">${r.distanceMeters}m</span>
+            </button>
+          `).join('');
+        }
+      } else {
+        strip.style.display = 'none';
+        strip.innerHTML = '';
+      }
+    }
+
+    function renderMarkers() {
+      const layer = document.getElementById('markersLayer');
+      layer.innerHTML = '';
+      const list = getFilteredRestaurants();
+      const candIds = new Set(state.candidates.map(c => c.id));
+
+      list.forEach(r => {
+        const el = document.createElement('div');
+        const isSel = state.selectedRestaurantId === r.id;
+        const isCand = candIds.has(r.id);
+        el.className = `clay-marker${isSel ? ' selected' : ''}${isCand ? ' is-candidate' : ''}`;
+        el.style.left = `${r.x}%`;
+        el.style.top = `${r.y}%`;
+        el.innerHTML = `
+          <div class="marker-house">
+            <div class="marker-roof" style="background:linear-gradient(135deg, #fff4, ${r.roof})"></div>
+            <div class="marker-body" style="background:${isSel ? 'rgba(255,255,255,0.92)' : r.heroColor}">${r.emoji}</div>
+            ${isCand ? '<div class="marker-paw-badge">🐾</div>' : ''}
+          </div>
+          <div class="marker-label">${r.name}</div>
+        `;
+        el.onclick = (e) => {
+          e.stopPropagation();
+          state.selectedRestaurantId = r.id;
+          renderAllMapUI();
+        };
+        layer.appendChild(el);
+      });
+    }
+
+    function renderRightCart() {
+      const cartDock = document.getElementById('rightCartDock');
+      if (state.candidates.length === 0) {
+        cartDock.innerHTML = '';
+        return;
+      }
+
+      const isSheetOpen = Boolean(state.selectedRestaurantId);
+      cartDock.innerHTML = `
+        <div class="right-cart-dock ${isSheetOpen ? 'sheet-open' : ''}" onclick="event.stopPropagation()">
+          <div class="cart-counter">🛒 ${state.candidates.length}/6</div>
+          <div class="cart-vertical-list">
+            ${state.candidates.map(item => `
+              <div class="cart-item-tile" title="${item.name}" onclick="selectFromSearch('${item.id}', event)">
+                <div class="cart-item-emoji" style="background:${item.heroColor}">${item.emoji}</div>
+                <div class="cart-item-name">${item.name}</div>
+                <button class="slot-remove" onclick="removeCandidate('${item.id}', event)">✕</button>
+              </div>
+            `).join('')}
+          </div>
+          <button class="cart-go-btn" onclick="openCatModal()">
+            <span style="font-size:16px">😼</span>
+            <span style="font-size:11px;font-weight:900">골라줘!</span>
+          </button>
+        </div>
+      `;
+    }
+
+    function renderBottomDock() {
+      const dock = document.getElementById('bottomDock');
+      const selected = RESTAURANTS.find(r => r.id === state.selectedRestaurantId);
+
+      // 가게를 클릭하지 않은 기본 상태에서는 하단 영역을 완전히 비워 지도 시야 확보
+      if (!selected) {
+        dock.innerHTML = '';
+        return;
+      }
+
+      const isCand = state.candidates.some(c => c.id === selected.id);
+      dock.innerHTML = `
+        <div class="clay-card-panel" onclick="event.stopPropagation()">
+          <div class="sheet-handle"></div>
+          <div class="sheet-top">
+            <div class="sheet-thumb" style="background:${selected.heroColor}">${selected.emoji}</div>
+            <div style="flex:1;min-width:0">
+              <div class="status-tags">
+                <span class="mini-badge" style="background:${selected.isOpenNow ? 'rgba(78,205,196,0.18)' : 'rgba(168,152,142,0.2)'};color:${selected.isOpenNow ? '#33A39B' : '#A8988E'}">
+                  ${selected.isOpenNow ? '영업중' : '준비중'}
+                </span>
+                ${selected.hasNoWaiting ? '<span class="mini-badge" style="background:#FFEFE8;color:#FC7D4E">웨이팅 없음</span>' : ''}
+                <span style="margin-left:auto;font-size:12px;font-weight:800">⭐ ${selected.rating}</span>
+              </div>
+              <div style="font-size:17px;font-weight:900;letter-spacing:-0.4px">${selected.name}</div>
+              <div style="font-size:11.5px;font-weight:600;color:var(--text-taupe);margin-top:2px">
+                ${selected.category} · ${selected.distanceMeters}m · ${selected.openHours}
+              </div>
+            </div>
+            <button class="icon-clay-btn" style="width:28px;height:28px;font-size:12px" onclick="closeBottomSheet(event)">✕</button>
+          </div>
+          <div class="sheet-review">💬 "${selected.oneLineReview}"</div>
+          <div class="sheet-actions">
+            <button class="clay-secondary-btn" onclick="openDirections('${selected.name}')">🚶 길찾기</button>
+            <button class="clay-cta-btn ${isCand ? 'clay-mint-btn' : ''}" onclick="toggleCandidate('${selected.id}')">
+              ${isCand ? '✓ 장바구니에 담김' : '🛒 후보 장바구니 담기'}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAllMapUI() {
+      renderTopControls();
+      renderMarkers();
+      renderRightCart();
+      renderBottomDock();
+    }
+
+    window.selectFromSearch = function(id, e) {
+      if (e) e.stopPropagation();
+      state.selectedRestaurantId = id;
+      renderAllMapUI();
+    };
+
+    window.closeBottomSheet = function(e) {
+      if (e) e.stopPropagation();
+      state.selectedRestaurantId = null;
+      renderAllMapUI();
+    };
+
+    window.toggleCandidate = function(id) {
+      const idx = state.candidates.findIndex(r => r.id === id);
+      if (idx >= 0) {
+        state.candidates.splice(idx, 1);
+      } else {
+        if (state.candidates.length >= 6) {
+          showToast('후보지는 최대 6개까지만 담을 수 있다냥! 🐾');
+          return;
+        }
+        state.candidates.push(RESTAURANTS.find(r => r.id === id));
+      }
+      renderAllMapUI();
+    };
+
+    window.removeCandidate = function(id, e) {
+      if (e) e.stopPropagation();
+      state.candidates = state.candidates.filter(r => r.id !== id);
+      renderAllMapUI();
+    };
+
+    window.openDirections = function(name) {
+      showToast(`📍 ${name} 길찾기를 실행합니다!`);
+    };
+
+    function buildCatSvg(pose) {
+      const isPoking = pose === 'pokingCards';
+      const isLicking = pose === 'lickingLips';
+      const isWink = pose === 'triumphantPick';
+      const isSad = pose === 'sulkySad';
+
+      const eyesSvg = isWink
+        ? `<path d="M 38 48 Q 44 42 50 48" stroke="#FFFFFF" stroke-width="3" fill="none" stroke-linecap="round"/>
+           <ellipse cx="74" cy="47" rx="6.5" ry="7.5" fill="#FFC947"/>
+           <ellipse cx="74" cy="47" rx="3" ry="5" fill="#2D241E"/>`
+        : isSad
+        ? `<line x1="38" y1="45" x2="49" y2="50" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+           <line x1="82" y1="45" x2="71" y2="50" stroke="#fff" stroke-width="3" stroke-linecap="round"/>`
+        : `<ellipse cx="44" cy="47" rx="6.5" ry="7" fill="#FFC947"/>
+           <ellipse cx="76" cy="47" rx="6.5" ry="7" fill="#FFC947"/>
+           <ellipse cx="45.5" cy="47" rx="2.8" ry="4.8" fill="#2D241E"/>
+           <ellipse cx="77.5" cy="47" rx="2.8" ry="4.8" fill="#2D241E"/>
+           <circle cx="42" cy="44" r="1.8" fill="#FFF"/>
+           <circle cx="74" cy="44" r="1.8" fill="#FFF"/>
+           <rect x="36" y="38" width="16" height="5" fill="#2B2624"/>
+           <rect x="68" y="37" width="16" height="3.5" fill="#2B2624"/>`;
+
+      const tongueSvg = isLicking
+        ? `<path d="M 63 66 Q 76 62 73 73 Q 66 76 63 66 Z" fill="#FF6B8B">
+             <animate attributeName="d" values="M 63 66 Q 74 62 71 72 Q 65 75 63 66 Z; M 63 66 Q 78 60 75 74 Q 67 77 63 66 Z; M 63 66 Q 74 62 71 72 Q 65 75 63 66 Z" dur="0.7s" repeatCount="indefinite"/>
+           </path>`
+        : '';
+
+      return `
+        <svg class="cat-svg ${isPoking ? 'poking' : ''}" viewBox="0 0 120 116">
+          <path d="M 86 92 Q 114 80 106 54" stroke="#2B2624" stroke-width="9" fill="none" stroke-linecap="round"/>
+          <ellipse cx="60" cy="88" rx="30" ry="23" fill="#2B2624"/>
+          <path d="M 46 72 Q 60 104 74 72 Z" fill="#FFFCF8"/>
+          <polygon points="28,46 22,16 48,30" fill="#2B2624"/>
+          <polygon points="92,46 98,16 72,30" fill="#2B2624"/>
+          <polygon points="31,41 27,23 43,32" fill="#FF8A8A"/>
+          <polygon points="89,41 93,23 77,32" fill="#FF8A8A"/>
+          <ellipse cx="60" cy="50" rx="36" ry="29" fill="#2B2624"/>
+          <ellipse cx="50" cy="33" rx="14" ry="6" fill="#473E3B"/>
+          <path d="M 60 52 Q 32 56 34 71 Q 60 82 86 71 Q 88 56 60 52 Z" fill="#FFFCF8"/>
+          ${eyesSvg}
+          <polygon points="55.5,57 64.5,57 60,62" fill="#FF8A8A"/>
+          <path d="M 50 65 Q 55 70 60 65 Q 65 70 70 65" stroke="#2D241E" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+          ${tongueSvg}
+          <line x1="36" y1="61" x2="16" y2="57" stroke="#6E5D53" stroke-width="1.6" stroke-linecap="round"/>
+          <line x1="36" y1="66" x2="16" y2="68" stroke="#6E5D53" stroke-width="1.6" stroke-linecap="round"/>
+          <line x1="84" y1="61" x2="104" y2="57" stroke="#6E5D53" stroke-width="1.6" stroke-linecap="round"/>
+          <line x1="84" y1="66" x2="104" y2="68" stroke="#6E5D53" stroke-width="1.6" stroke-linecap="round"/>
+          <ellipse cx="40" cy="${isPoking ? 87 : 97}" rx="8.5" ry="7" fill="#FFFCF8"/>
+          <ellipse cx="80" cy="${isPoking ? 97 : 97}" rx="8.5" ry="7" fill="#FFFCF8"/>
+        </svg>
+      `;
+    }
+
+    window.openCatModal = function() {
+      clearInterval(state.cat.pokeTimer);
+      state.cat = {
+        isOpen: true,
+        step: 'selectParty',
+        pose: 'idleSmirk',
+        track: 'guided',
+        selectedParty: null,
+        selectedVibe: null,
+        selectedTaste: null,
+        rejectedIds: new Set(),
+        picked: null,
+        dialogue: '후보지는 잘 담아왔군! 오늘 누구랑 가는 모임인지 골라보라냥~ 😼',
+        badgeText: '',
+        pokeIdx: 0,
+        pokeTimer: null,
+      };
+      document.getElementById('catModal').classList.add('open');
+      renderCatModal();
+    };
+
+    function closeCatModal() {
+      clearInterval(state.cat.pokeTimer);
+      state.cat.isOpen = false;
+      document.getElementById('catModal').classList.remove('open');
+    }
+
+    document.getElementById('modalCloseBtn').onclick = closeCatModal;
+    document.getElementById('modalBackBtn').onclick = () => {
+      if (state.cat.step === 'askTaste') {
+        state.cat.step = 'askVibe';
+        state.cat.pose = 'curiousAsk';
+        state.cat.dialogue = '분위기를 다시 골라볼까? 아니면 내 맘대로 고르게 맡겨도 좋다냥! 😼';
+      } else if (state.cat.step === 'askVibe') {
+        state.cat.step = 'selectParty';
+        state.cat.pose = 'idleSmirk';
+        state.cat.dialogue = '모임 구성을 다시 골라보라냥! 🐾';
+      }
+      renderCatModal();
+    };
+
+    window.selectParty = function(partyId) {
+      const party = PARTIES.find(p => p.id === partyId);
+      state.cat.selectedParty = party;
+      state.cat.step = 'askVibe';
+      state.cat.pose = 'curiousAsk';
+      state.cat.dialogue = `[${party.badge}] 조합이로구나! 오늘 어떤 분위기가 땡기나? 귀찮으면 내 맘대로 골라줄 수도 있지~ 😼`;
+      renderCatModal();
+    };
+
+    window.selectVibe = function(vibeId) {
+      const vibe = VIBES.find(v => v.id === vibeId);
+      state.cat.selectedVibe = vibe;
+      state.cat.step = 'askTaste';
+      state.cat.pose = 'curiousAsk';
+      state.cat.dialogue = `좋아, "${vibe.title}" 느낌이지? 자, 마지막 힌트! 지금 입안에서 어떤 맛이 땡기나냥? 😋`;
+      renderCatModal();
+    };
+
+    window.selectTasteAndDecide = function(tasteId) {
+      state.cat.selectedTaste = TASTES.find(t => t.id === tasteId);
+      state.cat.track = 'guided';
+      runThinkingAndPick('guided');
+    };
+
+    window.entrustToCatByWeather = function() {
+      state.cat.track = 'weather';
+      runThinkingAndPick('weather');
+    };
+
+    window.rejectCurrentAndRepick = function() {
+      if (!state.cat.picked) return;
+      state.cat.rejectedIds.add(state.cat.picked.id);
+      state.cat.picked = null;
+      const remaining = state.candidates.filter(r => !state.cat.rejectedIds.has(r.id));
+      if (remaining.length === 0) {
+        clearInterval(state.cat.pokeTimer);
+        state.cat.step = 'allRejected';
+        state.cat.pose = 'sulkySad';
+        state.cat.dialogue = '어라... 담은 후보지를 전부 빼버렸구나! 지도에서 새로운 가게를 더 담아오라냥~ 😿';
+        renderCatModal();
+        return;
+      }
+      runThinkingAndPick(state.cat.track);
+    };
+
+    function runThinkingAndPick(track) {
+      clearInterval(state.cat.pokeTimer);
+      const remaining = state.candidates.filter(r => !state.cat.rejectedIds.has(r.id));
+      if (remaining.length === 0) {
+        state.cat.step = 'allRejected';
+        state.cat.pose = 'sulkySad';
+        renderCatModal();
+        return;
+      }
+
+      state.cat.step = 'thinkingPoking';
+      state.cat.pose = 'pokingCards';
+      state.cat.pokeIdx = 0;
+      state.cat.dialogue = track === 'weather'
+        ? '흐음~ 오늘 날씨랑 계절 냄새를 킁킁 맡아보는 중이라냥... 🐾'
+        : '네가 고른 취향을 조합해서 딱 맞는 집을 고르는 중이라냥... 🐾';
+      renderCatModal();
+
+      let tick = 0;
+      state.cat.pokeTimer = setInterval(() => {
+        tick++;
+        if (tick < 6) {
+          state.cat.pokeIdx = tick % remaining.length;
+          renderCatModal();
+        } else {
+          clearInterval(state.cat.pokeTimer);
+          finalizePick(remaining, track);
+        }
+      }, 250);
+    }
+
+    function finalizePick(remaining, track) {
+      const weather = WEATHERS[state.weatherIdx];
+      const season = SEASONS[state.seasonIdx];
+
+      let chosen;
+      let dialogue;
+      let badgeText;
+      let pose;
+
+      if (track === 'weather') {
+        const scores = {};
+        let maxScore = 0;
+        remaining.forEach(r => {
+          let s = 0;
+          if (r.weathers.includes(weather.id)) s += 50;
+          if (r.seasons.includes(season.id)) s += 25;
+          scores[r.id] = s;
+          if (s > maxScore) maxScore = s;
+        });
+
+        const uniqueScores = new Set(Object.values(scores));
+        const hasClearEvidence = maxScore > 0 && (remaining.length === 1 || uniqueScores.size > 1);
+
+        if (!hasClearEvidence) {
+          chosen = remaining[Math.floor(Math.random() * remaining.length)];
+          badgeText = '🎲 구루냥 랜덤 직감 픽';
+          dialogue = `날씨나 계절로 딱 가르긴 어렵지만~ 내 고양이 육감으론 ${chosen.signatureDish}(이)가 있는 이 가게가 제일 맛있어 보이는구나! 츄릅~ 🐾`;
+        } else {
+          const topGroup = remaining.filter(r => scores[r.id] === maxScore);
+          chosen = topGroup[Math.floor(Math.random() * topGroup.length)];
+          badgeText = '😼 구루냥 직감 추천 픽';
+          dialogue = chosen.weatherComments[weather.id]
+            || `${weather.prefix} ${chosen.signatureDish}(이)가 있는 이 가게가 유독 맛있어 보이는구나! 츄릅~ 🐾`;
+        }
+        pose = 'lickingLips';
+      } else {
+        const party = state.cat.selectedParty;
+        const vibe = state.cat.selectedVibe;
+        const taste = state.cat.selectedTaste;
+        let bestScore = -1;
+        let topList = [];
+        remaining.forEach(r => {
+          let s = 0;
+          if (party) {
+            if (r.parties.includes(party.id)) s += 30;
+            if (party.isSolo && r.isSoloFriendly) s += 20;
+          }
+          if (vibe && r.vibes.includes(vibe.id)) s += 35;
+          if (taste && r.tastes.includes(taste.id)) s += 35;
+          if (s > bestScore) { bestScore = s; topList = [r]; }
+          else if (s === bestScore) topList.push(r);
+        });
+        chosen = topList[Math.floor(Math.random() * topList.length)];
+        pose = 'triumphantPick';
+        badgeText = `😼 ${party ? party.badge : ''} 취향 맞춤 픽`;
+        dialogue = chosen.defaultTasteComment;
+      }
+
+      state.cat.step = 'pickedResult';
+      state.cat.pose = pose;
+      state.cat.picked = chosen;
+      state.cat.badgeText = badgeText;
+      state.cat.dialogue = dialogue;
+      renderCatModal();
+    }
+
+    function renderCatModal() {
+      const c = state.cat;
+      const backBtn = document.getElementById('modalBackBtn');
+      backBtn.style.visibility = (c.step === 'askVibe' || c.step === 'askTaste') ? 'visible' : 'hidden';
+
+      const w = WEATHERS[state.weatherIdx];
+      const s = SEASONS[state.seasonIdx];
+      const remaining = state.candidates.filter(r => !c.rejectedIds.has(r.id));
+
+      let contentHtml = `
+        <div class="cat-stage">
+          <div class="cat-aura ${c.pose === 'lickingLips' ? 'licking' : ''}">
+            ${buildCatSvg(c.pose)}
+          </div>
+          <div class="speech-bubble ${c.pose === 'lickingLips' ? 'licking-highlight' : ''}">
+            ${c.step === 'pickedResult' && c.badgeText ? `<div class="decision-badge">${c.badgeText}</div>` : ''}
+            <div class="speech-text">${c.dialogue}</div>
+          </div>
+        </div>
+      `;
+
+      if (c.step === 'selectParty') {
+        contentHtml += `
+          <div class="step-header">
+            <span class="step-badge">STEP 1</span>
+            <div class="step-title">누구랑 함께 가나요?</div>
+            <div class="step-sub">2열 대형 카드로 오늘의 모임 구성을 알려주세요</div>
+          </div>
+          <div class="rect-grid-2col">
+            ${PARTIES.map(p => `
+              <div class="rect-choice-card ${c.selectedParty?.id === p.id ? 'selected' : ''}" onclick="selectParty('${p.id}')">
+                <div class="rect-visual" style="background:${c.selectedParty?.id === p.id ? 'rgba(255,255,255,0.25)' : p.tint}">${p.emoji}</div>
+                <div class="rect-title">${p.title}</div>
+                <div class="rect-sub">${p.sub}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } else if (c.step === 'askVibe' || c.step === 'askTaste') {
+        const isVibe = c.step === 'askVibe';
+        const items = isVibe ? VIBES : TASTES;
+        contentHtml += `
+          <button class="entrust-banner" onclick="entrustToCatByWeather()">
+            <div class="entrust-icon-box">😼🎲</div>
+            <div style="flex:1">
+              <div style="font-size:14.5px;font-weight:900;margin-bottom:2px">질문 패스! 구루냥에게 온전히 맡기기 😼</div>
+              <div style="font-size:11.5px;font-weight:600;opacity:0.92">
+                고민 없이 구루냥의 직감에 100% 맡겨보세요!
+              </div>
+            </div>
+            <span style="font-size:16px;font-weight:900">›</span>
+          </button>
+
+          <div class="step-header" style="margin-top:4px">
+            <span class="step-badge">STEP 2 · 취향 힌트 ${isVibe ? '1/2' : '2/2'}</span>
+            <div class="step-title">${isVibe ? '오늘 끌리는 분위기는?' : '지금 입에서 땡기는 맛은?'}</div>
+            <div class="step-sub">${isVibe ? '구루냥이 힌트를 듣고 딱 맞는 가게를 골라줄게요' : '마지막 한 가지! 선택 즉시 구루냥이 골라드려요'}</div>
+          </div>
+
+          <div class="rect-grid-2col">
+            ${items.map(item => `
+              <div class="rect-choice-card" onclick="${isVibe ? `selectVibe('${item.id}')` : `selectTasteAndDecide('${item.id}')`}">
+                <div class="rect-visual" style="background:${item.tint}">${item.emoji}</div>
+                <div class="rect-title">${item.title}</div>
+                <div class="rect-sub">${item.sub}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } else if (c.step === 'thinkingPoking') {
+        contentHtml += `
+          <div class="poking-grid">
+            ${remaining.map((r, i) => `
+              <div class="poking-card ${i === c.pokeIdx ? 'poked' : ''}">
+                <div style="font-size:30px;margin-bottom:4px">${r.emoji}</div>
+                <div style="font-size:13px;font-weight:800">${r.name}</div>
+                ${i === c.pokeIdx ? '<div style="font-size:11.5px;font-weight:800;margin-top:3px">🐾 툭!</div>' : ''}
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } else if (c.step === 'pickedResult' && c.picked) {
+        const p = c.picked;
+        const leftCount = remaining.length - 1;
+        contentHtml += `
+          <div class="result-card">
+            <div class="result-hero" style="background:${p.heroColor}">
+              <span>${p.emoji}</span>
+              <div class="pick-ribbon">PICK! 🐾</div>
+            </div>
+            <div style="font-size:21px;font-weight:900;letter-spacing:-0.5px">${p.name}</div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--text-taupe);margin:4px 0 12px">
+              ${p.category} · ⭐ ${p.rating} · ${p.distanceMeters}m
+            </div>
+            <div class="sheet-review" style="margin:0">
+              <div style="color:var(--clay-orange-dark);font-weight:800;margin-bottom:3px">🍽️ 추천 메뉴: ${p.signatureDish}</div>
+              <div>${p.oneLineReview}</div>
+            </div>
+          </div>
+          <button class="clay-cta-btn" style="padding:15px" onclick="openDirections('${p.name}'); closeCatModal();">
+            📍 여기로 출발! (길찾기 열기)
+          </button>
+          <button class="clay-secondary-btn" onclick="rejectCurrentAndRepick()">
+            ${leftCount > 0 ? `😿 여긴 안 땡겨! 이 가게 빼고 다시 골라줘 (${leftCount}곳 남음)` : '😿 여긴 안 땡겨! (이 가게도 제외하기)'}
+          </button>
+        `;
+      } else if (c.step === 'allRejected') {
+        contentHtml += `
+          <div class="result-card" style="border-color:rgba(200,182,155,0.55)">
+            <div style="font-size:16px;font-weight:800;margin-bottom:6px">담은 후보지를 전부 뺐다냥! 🐾</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text-taupe);margin-bottom:16px;line-height:1.5">
+              지도에서 새로운 맛집을 더 담아오면<br/>이 구루냥이 다시 기가 막히게 골라줄게!
+            </div>
+            <button class="clay-cta-btn" onclick="closeCatModal()">🗺️ 지도로 돌아가서 다시 담기</button>
+          </div>
+        `;
+      }
+
+      document.getElementById('modalBody').innerHTML = contentHtml;
+    }
+
+    // 검색 입력 & 클리어 이벤트
+    const searchInput = document.getElementById('searchInput');
+    searchInput.addEventListener('input', (e) => {
+      state.searchQuery = e.target.value;
+      renderAllMapUI();
+    });
+    document.getElementById('searchClearBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.searchQuery = '';
+      searchInput.value = '';
+      renderAllMapUI();
+    });
+
+    document.getElementById('mapCanvas').onclick = () => {
+      if (state.selectedRestaurantId) {
+        state.selectedRestaurantId = null;
+        renderAllMapUI();
+      }
+    };
+
+    // UI에 노출하지 않고 백그라운드에서 실시간 날씨/계절 상태 조용히 반영
+    (function fetchLiveWeatherSilently() {
+      const m = new Date().getMonth() + 1;
+      state.seasonIdx = (m >= 3 && m <= 5) ? 0 : (m >= 6 && m <= 8) ? 1 : (m >= 9 && m <= 11) ? 2 : 3;
+      fetch('https://api.open-meteo.com/v1/forecast?latitude=37.5612&longitude=126.9255&current=weather_code,temperature_2m')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          const cur = data && data.current;
+          if (!cur) return;
+          const code = cur.weather_code ?? 0;
+          const temp = cur.temperature_2m ?? 18;
+          const isRain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95 && code <= 99);
+          const isSnow = (code >= 71 && code <= 77) || (code >= 85 && code <= 86);
+          if (isRain) state.weatherIdx = 0;
+          else if (isSnow || temp <= 9) state.weatherIdx = 2;
+          else if (temp >= 27) state.weatherIdx = 3;
+          else state.weatherIdx = 1;
+        })
+        .catch(() => {});
+    })();
+
+    renderAllMapUI();
+  </script>
+</body>
+</html>
