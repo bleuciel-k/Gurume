@@ -20,6 +20,136 @@ enum ClayMarkerType {
   const ClayMarkerType(this.emoji, this.label, this.roofColor);
 }
 
+/// 현재 시각 기준 매장 실시간 영업 상태
+enum OpenStatus {
+  open('영업중'),
+  breakTime('브레이크타임'),
+  closed('영업종료');
+
+  final String label;
+
+  const OpenStatus(this.label);
+}
+
+/// 매장의 구조화된 영업시간/브레이크타임/정기휴무일 스케줄
+@immutable
+class OpeningHoursSchedule {
+  final String openTime;
+  final String closeTime;
+  final String? breakStart;
+  final String? breakEnd;
+
+  /// `DateTime.monday` (1) ~ `DateTime.sunday` (7)
+  final List<int> closedWeekdays;
+
+  const OpeningHoursSchedule({
+    required this.openTime,
+    required this.closeTime,
+    this.breakStart,
+    this.breakEnd,
+    this.closedWeekdays = const [],
+  });
+
+  /// 지정된 시각(기본: 현재 시각)에 대해 실시간 영업 상태 판별
+  OpenStatus evaluateStatus([DateTime? now]) {
+    final target = now ?? DateTime.now();
+    final openMinutes = _parseMinutes(openTime);
+    final closeMinutes = _parseMinutes(closeTime);
+    if (openMinutes == null || closeMinutes == null) {
+      return OpenStatus.open;
+    }
+
+    final nowMinutes = target.hour * 60 + target.minute;
+    final isOvernight = closeMinutes <= openMinutes;
+
+    if (isOvernight) {
+      // 자정을 넘긴 심야 영업 시간대(예: 17:00 - 01:00, 현재 00:30)
+      if (nowMinutes < closeMinutes) {
+        final yesterdayWeekday =
+            target.weekday == DateTime.monday ? DateTime.sunday : target.weekday - 1;
+        if (closedWeekdays.contains(yesterdayWeekday)) {
+          return OpenStatus.closed;
+        }
+        return _isWithinBreakTime(nowMinutes)
+            ? OpenStatus.breakTime
+            : OpenStatus.open;
+      }
+
+      if (closedWeekdays.contains(target.weekday)) {
+        return OpenStatus.closed;
+      }
+      if (nowMinutes >= openMinutes) {
+        return _isWithinBreakTime(nowMinutes)
+            ? OpenStatus.breakTime
+            : OpenStatus.open;
+      }
+      return OpenStatus.closed;
+    }
+
+    if (closedWeekdays.contains(target.weekday)) {
+      return OpenStatus.closed;
+    }
+
+    if (nowMinutes < openMinutes || nowMinutes >= closeMinutes) {
+      return OpenStatus.closed;
+    }
+
+    if (_isWithinBreakTime(nowMinutes)) {
+      return OpenStatus.breakTime;
+    }
+
+    return OpenStatus.open;
+  }
+
+  bool _isWithinBreakTime(int nowMinutes) {
+    final startRaw = breakStart;
+    final endRaw = breakEnd;
+    if (startRaw == null || endRaw == null) return false;
+    final start = _parseMinutes(startRaw);
+    final end = _parseMinutes(endRaw);
+    if (start == null || end == null || end <= start) return false;
+    return nowMinutes >= start && nowMinutes < end;
+  }
+
+  static int? _parseMinutes(String hhmm) {
+    final parts = hhmm.split(':');
+    if (parts.length != 2) return null;
+    final hour = int.tryParse(parts[0].trim());
+    final minute = int.tryParse(parts[1].trim());
+    if (hour == null || minute == null) return null;
+    if (hour < 0 || hour > 24 || minute < 0 || minute > 59) return null;
+    if (hour == 24 && minute > 0) return null;
+    return hour * 60 + minute;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'openTime': openTime,
+      'closeTime': closeTime,
+      if (breakStart != null && breakStart!.isNotEmpty) 'breakStart': breakStart,
+      if (breakEnd != null && breakEnd!.isNotEmpty) 'breakEnd': breakEnd,
+      if (closedWeekdays.isNotEmpty) 'closedWeekdays': closedWeekdays,
+    };
+  }
+
+  factory OpeningHoursSchedule.fromMap(Map<String, dynamic> map) {
+    final rawClosed = (map['closedWeekdays'] as List?) ?? const [];
+    final closed = rawClosed
+        .map((e) => e is int ? e : (e as num?)?.toInt())
+        .whereType<int>()
+        .where((d) => d >= 1 && d <= 7)
+        .toList();
+
+    return OpeningHoursSchedule(
+      openTime: map['openTime'] as String? ?? '11:30',
+      closeTime: map['closeTime'] as String? ?? '22:00',
+      breakStart: map['breakStart'] as String?,
+      breakEnd: map['breakEnd'] as String?,
+      closedWeekdays: closed,
+    );
+  }
+}
+
 /// 자체 DB(Cloud Firestore + 로컬 캐시)에 저장되는 맛집 모델.
 /// Google Places API를 앱 실행마다 호출하지 않기 위해 모든 탐색/추천 메타데이터를 내장합니다.
 @immutable
@@ -36,11 +166,17 @@ class RestaurantModel {
   final double rating;
   final int distanceMeters;
 
-  // 원탭 필터 즉각 대응 필드
+  // 원탭 필터 & 상세 카드 즉각 대응 필드
   final bool isOpenNow;
   final bool hasNoWaiting;
   final bool isSoloFriendly;
   final String openHoursText;
+  final String? thumbnailUrl;
+  final String priceRangeText;
+  final OpeningHoursSchedule? openingHours;
+
+  // Firestore 증분 동기화 삭제(Tombstone) 플래그
+  final bool isDeleted;
 
   // 구루냥(턱시도 고양이) 매칭용 태그
   final List<PartyType> suitableParties;
@@ -72,6 +208,10 @@ class RestaurantModel {
     required this.hasNoWaiting,
     required this.isSoloFriendly,
     required this.openHoursText,
+    this.thumbnailUrl,
+    this.priceRangeText = '1만원대',
+    this.openingHours,
+    this.isDeleted = false,
     required this.suitableParties,
     required this.vibeTags,
     required this.tasteTags,
@@ -82,6 +222,18 @@ class RestaurantModel {
     required this.defaultTasteComment,
     required this.updatedAtMillis,
   });
+
+  /// 구조화된 `openingHours`가 있으면 현재 시각 기준으로 실시간 판별하고, 없으면 저장된 `isOpenNow` 폴백
+  OpenStatus evaluateOpenStatus([DateTime? now]) {
+    if (openingHours != null) {
+      return openingHours!.evaluateStatus(now);
+    }
+    return isOpenNow ? OpenStatus.open : OpenStatus.closed;
+  }
+
+  bool isCurrentlyOpen([DateTime? now]) {
+    return evaluateOpenStatus(now) == OpenStatus.open;
+  }
 
   /// 현재 날씨 조건에 맞는 구루냥의 입맛 다시기 대사 반환
   String buildWeatherCatComment(
@@ -119,6 +271,10 @@ class RestaurantModel {
     bool? hasNoWaiting,
     bool? isSoloFriendly,
     String? openHoursText,
+    String? thumbnailUrl,
+    String? priceRangeText,
+    OpeningHoursSchedule? openingHours,
+    bool? isDeleted,
     List<PartyType>? suitableParties,
     List<VibePreference>? vibeTags,
     List<TastePreference>? tasteTags,
@@ -145,6 +301,10 @@ class RestaurantModel {
       hasNoWaiting: hasNoWaiting ?? this.hasNoWaiting,
       isSoloFriendly: isSoloFriendly ?? this.isSoloFriendly,
       openHoursText: openHoursText ?? this.openHoursText,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      priceRangeText: priceRangeText ?? this.priceRangeText,
+      openingHours: openingHours ?? this.openingHours,
+      isDeleted: isDeleted ?? this.isDeleted,
       suitableParties: suitableParties ?? this.suitableParties,
       vibeTags: vibeTags ?? this.vibeTags,
       tasteTags: tasteTags ?? this.tasteTags,
@@ -182,6 +342,11 @@ class RestaurantModel {
       'heroColorValue': heroColor.toARGB32(),
       'rating': rating,
       'distanceMeters': distanceMeters,
+      if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+        'thumbnailUrl': thumbnailUrl,
+      'priceRangeText': priceRangeText,
+      if (openingHours != null) 'openingHours': openingHours!.toMap(),
+      if (isDeleted) 'isDeleted': true,
       'status': {
         'isOpenNow': isOpenNow,
         'hasNoWaiting': hasNoWaiting,
@@ -233,6 +398,11 @@ class RestaurantModel {
       _ => 0,
     };
 
+    final rawOpeningHours = map['openingHours'];
+    final openingHours = rawOpeningHours is Map
+        ? OpeningHoursSchedule.fromMap(Map<String, dynamic>.from(rawOpeningHours))
+        : null;
+
     return RestaurantModel(
       id: map['id'] as String? ?? '',
       name: map['name'] as String? ?? '',
@@ -250,6 +420,10 @@ class RestaurantModel {
       hasNoWaiting: status['hasNoWaiting'] as bool? ?? true,
       isSoloFriendly: status['isSoloFriendly'] as bool? ?? false,
       openHoursText: status['openHoursText'] as String? ?? '11:30 - 22:00',
+      thumbnailUrl: map['thumbnailUrl'] as String?,
+      priceRangeText: map['priceRangeText'] as String? ?? '1만원대',
+      openingHours: openingHours,
+      isDeleted: map['isDeleted'] as bool? ?? false,
       suitableParties: ((tags['partyTypes'] as List?) ?? const [])
           .map((id) => _enumByName(PartyType.values, id))
           .whereType<PartyType>()

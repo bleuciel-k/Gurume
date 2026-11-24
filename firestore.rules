@@ -28,6 +28,15 @@ rules_version = '2';
 //   - heroColorValue: int (optional, 0..4294967295 ARGB 32-bit color integer)
 //   - rating: number (required, 0..5)
 //   - distanceMeters: int (required, 0..20050000)
+//   - thumbnailUrl: string (optional, 0..500 chars)
+//   - priceRangeText: string (optional, 1..40 chars, e.g. "1만원대", "2~3만원대")
+//   - openingHours: map (optional, strict allowed keys):
+//       - openTime: string (required, 4..5 chars, '^[0-2]?[0-9]:[0-5][0-9]$')
+//       - closeTime: string (required, 4..5 chars, '^[0-2]?[0-9]:[0-5][0-9]$')
+//       - breakStart: string (optional, 4..5 chars, '^[0-2]?[0-9]:[0-5][0-9]$')
+//       - breakEnd: string (optional, 4..5 chars, '^[0-2]?[0-9]:[0-5][0-9]$')
+//       - closedWeekdays: list<int> (optional, <= 7 items, weekday integers 1..7)
+//   - isDeleted: bool (optional, tombstone flag for incremental sync deletion)
 //   - status: map (required, exact keys only):
 //       - isOpenNow: bool (required)
 //       - hasNoWaiting: bool (required)
@@ -106,6 +115,31 @@ service cloud.firestore {
       return val is list &&
         val.size() <= maxSize &&
         val.hasOnly(allowedValues);
+    }
+
+    // Validate 24-hour HH:MM or H:MM time string format and length bounds
+    function isValidTimeString(val) {
+      return isValidString(val, 4, 5) &&
+        val.matches('^[0-2]?[0-9]:[0-5][0-9]$');
+    }
+
+    // Validate an optional HH:MM or H:MM time string entry inside a map
+    function isValidOptionalMapTimeString(mapData, key) {
+      return !(key in mapData) || isValidTimeString(mapData[key]);
+    }
+
+    // Validate a bounded list (<= 7 items) containing only weekday integers 1..7
+    function isValidClosedWeekdays(val) {
+      return val is list &&
+        val.size() <= 7 &&
+        val.hasOnly([1, 2, 3, 4, 5, 6, 7]) &&
+        (val.size() < 1 || val[0] is int) &&
+        (val.size() < 2 || val[1] is int) &&
+        (val.size() < 3 || val[2] is int) &&
+        (val.size() < 4 || val[3] is int) &&
+        (val.size() < 5 || val[4] is int) &&
+        (val.size() < 6 || val[5] is int) &&
+        (val.size() < 7 || val[6] is int);
     }
 
     // ===============================================================
@@ -210,6 +244,27 @@ service cloud.firestore {
         isValidOptionalMapString(comments, 'hotComment', 0, 300);
     }
 
+    // Validate structured openingHours map with required open/close times and optional break/closed days
+    function isValidOpeningHours(oh) {
+      return oh is map &&
+        oh.keys().hasAll([
+          'openTime',
+          'closeTime'
+        ]) &&
+        oh.keys().hasOnly([
+          'openTime',
+          'closeTime',
+          'breakStart',
+          'breakEnd',
+          'closedWeekdays'
+        ]) &&
+        isValidTimeString(oh.openTime) &&
+        isValidTimeString(oh.closeTime) &&
+        isValidOptionalMapTimeString(oh, 'breakStart') &&
+        isValidOptionalMapTimeString(oh, 'breakEnd') &&
+        (!('closedWeekdays' in oh) || isValidClosedWeekdays(oh.closedWeekdays));
+    }
+
     function isValidRestaurant(data, restaurantId) {
       return hasRequiredFields([
           'id',
@@ -239,6 +294,10 @@ service cloud.firestore {
           'heroColorValue',
           'rating',
           'distanceMeters',
+          'thumbnailUrl',
+          'priceRangeText',
+          'openingHours',
+          'isDeleted',
           'status',
           'matchingTags',
           'catComments',
@@ -267,6 +326,10 @@ service cloud.firestore {
         data.distanceMeters is int &&
         data.distanceMeters >= 0 &&
         data.distanceMeters <= 20050000 &&
+        isValidOptionalMapString(data, 'thumbnailUrl', 0, 500) &&
+        isValidOptionalMapString(data, 'priceRangeText', 1, 40) &&
+        (!('openingHours' in data) || isValidOpeningHours(data.openingHours)) &&
+        (!('isDeleted' in data) || data.isDeleted is bool) &&
         isValidRestaurantStatus(data.status) &&
         isValidMatchingTags(data.matchingTags) &&
         isValidCatComments(data.catComments) &&

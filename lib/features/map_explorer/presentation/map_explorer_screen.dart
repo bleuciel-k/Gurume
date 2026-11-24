@@ -8,6 +8,7 @@ import 'package:oreguru/core/constants/api_config.dart';
 import 'package:oreguru/core/constants/app_colors.dart';
 import 'package:oreguru/core/constants/map_style.dart';
 import 'package:oreguru/core/services/firebase_service.dart';
+import 'package:oreguru/core/services/location_service.dart';
 import 'package:oreguru/core/services/maps_platform_bridge.dart';
 import 'package:oreguru/core/services/marker_bitmap_cache.dart';
 import 'package:oreguru/core/widgets/clay_button.dart';
@@ -37,6 +38,7 @@ class MapExplorerScreen extends ConsumerStatefulWidget {
 class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
   bool _useNativeGoogleMap = false;
   bool _isLoadingMapSdk = false;
+  GoogleMapController? _mapController;
   final TextEditingController _searchController = TextEditingController();
   final MarkerBitmapCache _markerBitmapCache = MarkerBitmapCache();
   Map<String, BitmapDescriptor> _markerBitmaps = const {};
@@ -60,7 +62,50 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
   void dispose() {
     _searchController.dispose();
     _markerBitmapCache.clear();
+    _mapController?.dispose();
+    _mapController = null;
     super.dispose();
+  }
+
+  Future<void> _animateCameraTo(
+    GeoPoint2D target, {
+    double zoom = 16.0,
+  }) async {
+    final controller = _mapController;
+    if (!_useNativeGoogleMap || controller == null) return;
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(target.latitude, target.longitude),
+          zoom,
+        ),
+      );
+    } catch (_) {
+      // 맵 뷰가 아직 준비되지 않았거나 전환 직전이면 무시
+    }
+  }
+
+  Future<void> _handleLocateMe() async {
+    HapticFeedback.selectionClick();
+    final result =
+        await ref.read(mapExplorerProvider.notifier).recenterToUserLocation();
+    await _animateCameraTo(result.location, zoom: 16.0);
+    if (!mounted) return;
+    if (!result.isLiveGps) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.textEspresso,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadii.buttonInput),
+          ),
+          content: const Text(
+            '위치 권한이 없어 기본 중심(연남동)으로 이동했어요.',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+      );
+    }
   }
 
   void _scheduleMarkerBitmapSync(
@@ -90,33 +135,35 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
     });
   }
 
-  Future<void> _handleToggleGoogleMap() async {
+  Future<bool> _toggleGoogleMapMode({String? webApiKeyOverride}) async {
     if (_useNativeGoogleMap) {
+      _mapController = null;
       setState(() => _useNativeGoogleMap = false);
-      return;
+      return true;
     }
 
     if (!isGoogleMapsWebPlatform() || isGoogleMapsSdkReady()) {
       setState(() => _useNativeGoogleMap = true);
-      return;
+      return true;
     }
 
-    final existingKey = ApiConfig.hasCompileTimeGoogleMapsKey
-        ? ApiConfig.googleMapsApiKey
-        : getStoredWebMapsApiKey();
+    final keyCandidate = webApiKeyOverride?.trim().isNotEmpty == true
+        ? webApiKeyOverride!.trim()
+        : (ApiConfig.hasCompileTimeGoogleMapsKey
+            ? ApiConfig.googleMapsApiKey
+            : getStoredWebMapsApiKey());
 
-    if (existingKey.isNotEmpty) {
-      await _activateWebMapsWithKey(existingKey);
-      return;
+    if (keyCandidate.isNotEmpty) {
+      return _activateWebMapsWithKey(keyCandidate);
     }
 
-    await _showWebMapsApiKeyDialog();
+    return false;
   }
 
-  Future<void> _activateWebMapsWithKey(String apiKey) async {
+  Future<bool> _activateWebMapsWithKey(String apiKey) async {
     setState(() => _isLoadingMapSdk = true);
     final loaded = await loadGoogleMapsWebSdk(apiKey.trim());
-    if (!mounted) return;
+    if (!mounted) return loaded;
     setState(() {
       _isLoadingMapSdk = false;
       if (loaded) {
@@ -138,121 +185,14 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
         ),
       );
     }
+    return loaded;
   }
 
-  Future<void> _showWebMapsApiKeyDialog() async {
-    final controller = TextEditingController();
-    final apiKey = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          child: ClayContainer(
-            variant: ClaySurfaceVariant.card,
-            borderRadius: AppRadii.sheetPanel,
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  '🗺️ Google Maps API 키 연결',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.textEspresso,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  '실제 Google Maps 지도 위에 3D 클레이 마커를 띄우려면 Google Maps JavaScript API 키를 입력해 주세요.',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textTaupe,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                ClayContainer(
-                  variant: ClaySurfaceVariant.recessed,
-                  borderRadius: AppRadii.buttonInput,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 2,
-                  ),
-                  child: TextField(
-                    controller: controller,
-                    autofocus: true,
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textEspresso,
-                    ),
-                    decoration: const InputDecoration(
-                      hintText: 'AIzaSy...',
-                      hintStyle: TextStyle(color: AppColors.textMuted),
-                      border: InputBorder.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ClayButton(
-                        variant: ClaySurfaceVariant.raised,
-                        borderRadius: AppRadii.buttonInput,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        child: const Text(
-                          '취소',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textTaupe,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ClayButton(
-                        variant: ClaySurfaceVariant.accent,
-                        borderRadius: AppRadii.buttonInput,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        onPressed: () {
-                          final val = controller.text.trim();
-                          if (val.isNotEmpty) {
-                            Navigator.of(dialogContext).pop(val);
-                          }
-                        },
-                        child: const Text(
-                          '지도 연결하기',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    controller.dispose();
-
-    if (apiKey != null && apiKey.isNotEmpty && mounted) {
-      await _activateWebMapsWithKey(apiKey);
-    }
-  }
-
-  Future<void> _showFirestoreSyncDialog() async {
+  /// 지도 전환 · Web Maps API 키 · Firestore DB 동기화 · 위치/캐시 상태를 한곳에 모은 설정 모달
+  Future<void> _showSettingsModal() async {
     final firebase = ref.read(firebaseServiceProvider);
     final repo = ref.read(restaurantRepositoryProvider);
+    final mapsKeyCtrl = TextEditingController(text: getStoredWebMapsApiKey());
     final apiKeyCtrl = TextEditingController();
     final appIdCtrl = TextEditingController();
     final projectIdCtrl = TextEditingController();
@@ -274,6 +214,7 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
                     .toString()
                     .substring(0, 19)
                 : '로컬 시드 캐시 사용 중';
+            final explorer = ref.read(mapExplorerProvider);
 
             return Dialog(
               backgroundColor: Colors.transparent,
@@ -289,9 +230,9 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
                       Row(
                         children: [
                           const Text(
-                            '🔥 Firestore 캐시 동기화',
+                            '⚙️ 지도 및 데이터 설정',
                             style: TextStyle(
-                              fontSize: 16.5,
+                              fontSize: 17,
                               fontWeight: FontWeight.w900,
                               color: AppColors.textEspresso,
                             ),
@@ -307,7 +248,88 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
+
+                      // 섹션 1: 지도 엔진 & 위치 상태
+                      ClayContainer(
+                        variant: ClaySurfaceVariant.recessed,
+                        borderRadius: AppRadii.buttonInput,
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '🗺️ 현재 지도: ${_useNativeGoogleMap ? 'Google Maps SDK' : '2D 클레이 캔버스'}',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textEspresso,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              explorer.hasLiveGps
+                                  ? '📍 GPS 수신됨 (${explorer.userLocation.latitude.toStringAsFixed(4)}, ${explorer.userLocation.longitude.toStringAsFixed(4)})'
+                                  : '📍 기본 기준 위치 사용 중 (연남동)',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textTaupe,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            if (isGoogleMapsWebPlatform() &&
+                                !isGoogleMapsSdkReady() &&
+                                !ApiConfig.hasCompileTimeGoogleMapsKey) ...[
+                              _DialogInputField(
+                                controller: mapsKeyCtrl,
+                                hint: 'Google Maps Web API Key (AIzaSy...)',
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            ClayButton(
+                              variant: _useNativeGoogleMap
+                                  ? ClaySurfaceVariant.raised
+                                  : ClaySurfaceVariant.accent,
+                              borderRadius: AppRadii.buttonInput,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              onPressed: busy || _isLoadingMapSdk
+                                  ? null
+                                  : () async {
+                                      final ok = await _toggleGoogleMapMode(
+                                        webApiKeyOverride: mapsKeyCtrl.text,
+                                      );
+                                      setDialogState(() {
+                                        statusFeedback = ok
+                                            ? (_useNativeGoogleMap
+                                                ? 'Google Maps 모드로 전환했어요.'
+                                                : '2D 클레이 맵 모드로 전환했어요.')
+                                            : '웹에서 Google Maps를 켜려면 Maps JavaScript API 키를 입력해 주세요.';
+                                      });
+                                    },
+                              child: Center(
+                                child: Text(
+                                  _isLoadingMapSdk
+                                      ? 'Google Maps 로딩 중...'
+                                      : (_useNativeGoogleMap
+                                          ? '🎨 2D 클레이 맵으로 전환'
+                                          : '🗺️ Google Maps 지도로 전환'),
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: _useNativeGoogleMap
+                                        ? AppColors.textEspresso
+                                        : Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // 섹션 2: Firestore DB 캐시 동기화
                       ClayContainer(
                         variant: ClaySurfaceVariant.recessed,
                         borderRadius: AppRadii.buttonInput,
@@ -317,8 +339,8 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
                           children: [
                             Text(
                               isConnected
-                                  ? '🟢 연결됨: ${firebase.activeProjectId} (${firebase.activeDatabaseId})'
-                                  : '🟡 로컬 캐시 모드 (Firestore 미연결)',
+                                  ? '🔥 DB 연결됨: ${firebase.activeProjectId} (${firebase.activeDatabaseId})'
+                                  : '💾 로컬 디스크 캐시 모드 (Firestore 미연결)',
                               style: const TextStyle(
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w800,
@@ -348,7 +370,7 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 12),
                       if (isConnected) ...[
                         ClayButton(
                           variant: ClaySurfaceVariant.accent,
@@ -372,7 +394,9 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
                                   });
                                 },
                           child: Text(
-                            busy ? '동기화 중...' : '🔄 증분 동기화 (updatedAt > lastSync)',
+                            busy
+                                ? '동기화 중...'
+                                : '🔄 증분 동기화 (updatedAt > lastSync)',
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
@@ -403,7 +427,8 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
                                   } catch (e) {
                                     setDialogState(() {
                                       busy = false;
-                                      statusFeedback = '업로드 실패 (보안규칙 확인): $e';
+                                      statusFeedback =
+                                          '업로드 실패 (보안규칙 확인): $e';
                                     });
                                   }
                                 },
@@ -516,6 +541,7 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
       },
     );
 
+    mapsKeyCtrl.dispose();
     apiKeyCtrl.dispose();
     appIdCtrl.dispose();
     projectIdCtrl.dispose();
@@ -528,6 +554,24 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
     final selectedRestaurant = ref.watch(selectedRestaurantProvider);
     final candidates = ref.watch(candidateTrayProvider);
     final explorerState = ref.watch(mapExplorerProvider);
+
+    ref.listen<String?>(
+      mapExplorerProvider.select((s) => s.selectedRestaurantId),
+      (prev, next) {
+        if (next == null || next == prev) return;
+        final restaurants =
+            ref.read(restaurantsProvider).valueOrNull ?? const [];
+        for (final r in restaurants) {
+          if (r.id == next) {
+            _animateCameraTo(
+              GeoPoint2D(latitude: r.latitude, longitude: r.longitude),
+              zoom: 16.5,
+            );
+            break;
+          }
+        }
+      },
+    );
 
     final candidateIds = candidates.map((e) => e.id).toSet();
     final hasSearchQuery = explorerState.searchQuery.trim().isNotEmpty;
@@ -548,7 +592,10 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
             // 1. 지도 레이어 (실제 Google Maps SDK + 3D 클레이 BitmapDescriptor OR 로컬 클레이 2D 캔버스)
             Positioned.fill(
               child: _useNativeGoogleMap
-                  ? _buildNativeGoogleMap(filteredRestaurants)
+                  ? _buildNativeGoogleMap(
+                      filteredRestaurants,
+                      explorerState,
+                    )
                   : _Clay2DMapCanvas(
                       restaurants: filteredRestaurants,
                       selectedId: selectedRestaurant?.id,
@@ -569,7 +616,7 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
                     ),
             ),
 
-            // 2. 상단 헤더: 브랜드+지도전환 바 -> 맛집/메뉴 검색창 -> 원탭 필터 -> 검색결과 퀵바
+            // 2. 상단 헤더: 브랜드+설정 버튼 -> 맛집/메뉴 검색창 -> 원탭 필터 -> 재검색/검색결과 퀵바
             Positioned(
               top: 0,
               left: 0,
@@ -610,93 +657,24 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
                       ),
                       const Spacer(),
 
-                      GestureDetector(
-                        onTap: _showFirestoreSyncDialog,
-                        child: ClayContainer(
-                          variant: ref.watch(firebaseServiceProvider).isConnected
-                              ? ClaySurfaceVariant.mint
-                              : ClaySurfaceVariant.raised,
-                          borderRadius: AppRadii.buttonInput,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                ref.watch(firebaseServiceProvider).isConnected
-                                    ? '🔥 DB'
-                                    : '💾 캐시',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: ref
-                                          .watch(firebaseServiceProvider)
-                                          .isConnected
-                                      ? Colors.white
-                                      : AppColors.textEspresso,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-
-                      GestureDetector(
-                        onTap: _isLoadingMapSdk ? null : _handleToggleGoogleMap,
-                        child: ClayContainer(
-                          variant: _useNativeGoogleMap
-                              ? ClaySurfaceVariant.accent
-                              : ClaySurfaceVariant.raised,
-                          borderRadius: AppRadii.buttonInput,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 11,
-                            vertical: 8,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_isLoadingMapSdk)
-                                const SizedBox(
-                                  width: 15,
-                                  height: 15,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppColors.clayOrange,
-                                  ),
-                                )
-                              else
-                                Icon(
-                                  _useNativeGoogleMap
-                                      ? Icons.layers_rounded
-                                      : Icons.map_outlined,
-                                  size: 17,
-                                  color: _useNativeGoogleMap
-                                      ? Colors.white
-                                      : AppColors.clayOrange,
-                                ),
-                              const SizedBox(width: 5),
-                              Text(
-                                _useNativeGoogleMap ? '클레이 맵' : 'Google 지도',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: _useNativeGoogleMap
-                                      ? Colors.white
-                                      : AppColors.textEspresso,
-                                ),
-                              ),
-                            ],
-                          ),
+                      // 프로덕션 설정 버튼(지도 전환 / DB 동기화 / GPS 진단 통합)
+                      ClayButton(
+                        key: const Key('settings_button'),
+                        variant: ClaySurfaceVariant.raised,
+                        borderRadius: AppRadii.buttonInput,
+                        padding: const EdgeInsets.all(8),
+                        onPressed: _showSettingsModal,
+                        child: const Icon(
+                          Icons.settings_rounded,
+                          size: 20,
+                          color: AppColors.textEspresso,
                         ),
                       ),
                     ],
                   ),
                 ),
 
-                // 가게 / 메뉴 실시간 검색창 (Figma node 2:144: 18px + 1px stroke + soft clay surface)
+                // 가게 / 메뉴 실시간 검색창
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
                   child: ClayContainer(
@@ -773,10 +751,44 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
                 // 원탭 상황별 필터 칩 4개
                 const OneTapFilterBar(),
 
+                // 지도 이동 시 노출되는 "이 지역에서 재검색" 버튼
+                if (explorerState.shouldShowViewportResearch)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Center(
+                      child: ClayButton(
+                        key: const Key('viewport_research_button'),
+                        variant: ClaySurfaceVariant.raised,
+                        borderRadius: AppRadii.buttonInput,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          ref
+                              .read(mapExplorerProvider.notifier)
+                              .applyViewportSearch();
+                        },
+                        child: const Text(
+                          '🔄 이 지역에서 재검색',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.clayOrangeDark,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
                 // 검색어 입력 시 일치하는 가게 바로 선택 칩 리스트
                 if (hasSearchQuery)
                   _SearchQuickResultStrip(
                     results: filteredRestaurants,
+                    distanceFormatter: (r) => LocationService.formatDistance(
+                      explorerState.distanceMetersFromCenter(r),
+                    ),
                     onSelect: (id) {
                       FocusScope.of(context).unfocus();
                       ref
@@ -789,7 +801,41 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
               ),
             ),
 
-            // 3. 우측 1열 세로 후보지 장바구니 (후보가 1곳 이상 담겼을 때만 노출)
+            // 3. 좌측 하단 내 위치로 이동 버튼 (🎯)
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              left: 16,
+              bottom: selectedRestaurant != null ? 320 : 22,
+              child: SafeArea(
+                top: false,
+                child: ClayButton(
+                  key: const Key('locate_me_button'),
+                  variant: ClaySurfaceVariant.raised,
+                  borderRadius: AppRadii.buttonInput,
+                  padding: const EdgeInsets.all(11),
+                  onPressed: explorerState.isLocating ? null : _handleLocateMe,
+                  child: explorerState.isLocating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: AppColors.clayOrange,
+                          ),
+                        )
+                      : Icon(
+                          Icons.my_location_rounded,
+                          size: 20,
+                          color: explorerState.hasLiveGps
+                              ? AppColors.clayOrange
+                              : AppColors.textEspresso,
+                        ),
+                ),
+              ),
+            ),
+
+            // 4. 우측 1열 세로 후보지 장바구니 (후보가 1곳 이상 담겼을 때만 노출)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
@@ -803,7 +849,7 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
               ),
             ),
 
-            // 4. 가게 마커/검색결과 클릭 시에만 올라오는 상세 바텀 시트
+            // 5. 가게 마커/검색결과 클릭 시에만 올라오는 상세 바텀 시트
             if (selectedRestaurant != null)
               Positioned(
                 left: 0,
@@ -827,7 +873,10 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
   }
 
   /// 실제 Google Maps Platform SDK 뷰 (kOreguruMapStyleJson + 3D 클레이 BitmapDescriptor 마커 적용)
-  Widget _buildNativeGoogleMap(List<RestaurantModel> restaurants) {
+  Widget _buildNativeGoogleMap(
+    List<RestaurantModel> restaurants,
+    MapExplorerState explorerState,
+  ) {
     final markers = restaurants.map((r) {
       final customIcon = _markerBitmaps[r.id];
       return Marker(
@@ -842,15 +891,30 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
     }).toSet();
 
     return GoogleMap(
-      initialCameraPosition: const CameraPosition(
-        target: LatLng(37.5612, 126.9255),
+      initialCameraPosition: CameraPosition(
+        target: LatLng(
+          explorerState.searchCenter.latitude,
+          explorerState.searchCenter.longitude,
+        ),
         zoom: 16.0,
       ),
       style: kOreguruMapStyleJson,
+      myLocationEnabled: explorerState.hasLiveGps,
       myLocationButtonEnabled: false,
       zoomControlsEnabled: false,
       compassEnabled: false,
       markers: markers,
+      onMapCreated: (controller) {
+        _mapController = controller;
+      },
+      onCameraMove: (position) {
+        ref.read(mapExplorerProvider.notifier).setPendingViewportCenter(
+              GeoPoint2D(
+                latitude: position.target.latitude,
+                longitude: position.target.longitude,
+              ),
+            );
+      },
       onTap: (_) =>
           ref.read(mapExplorerProvider.notifier).selectRestaurant(null),
     );
@@ -859,10 +923,12 @@ class _MapExplorerScreenState extends ConsumerState<MapExplorerScreen> {
 
 class _SearchQuickResultStrip extends StatelessWidget {
   final List<RestaurantModel> results;
+  final String Function(RestaurantModel) distanceFormatter;
   final ValueChanged<String> onSelect;
 
   const _SearchQuickResultStrip({
     required this.results,
+    required this.distanceFormatter,
     required this.onSelect,
   });
 
@@ -924,7 +990,7 @@ class _SearchQuickResultStrip extends StatelessWidget {
                   ),
                   const SizedBox(width: 5),
                   Text(
-                    '${r.distanceMeters}m',
+                    distanceFormatter(r),
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,

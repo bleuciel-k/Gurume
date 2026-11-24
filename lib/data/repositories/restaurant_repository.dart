@@ -107,10 +107,17 @@ class RestaurantRepository {
         deltas: deltaDocs,
       );
 
-      final maxUpdatedAt = merged.fold<int>(
-        _lastSyncMillis,
-        (acc, r) => r.updatedAtMillis > acc ? r.updatedAtMillis : acc,
-      );
+      var maxUpdatedAt = _lastSyncMillis;
+      for (final r in merged) {
+        if (r.updatedAtMillis > maxUpdatedAt) {
+          maxUpdatedAt = r.updatedAtMillis;
+        }
+      }
+      for (final d in deltaDocs) {
+        if (d.updatedAtMillis > maxUpdatedAt) {
+          maxUpdatedAt = d.updatedAtMillis;
+        }
+      }
       final nextSyncMillis = deltaDocs.isNotEmpty
           ? maxUpdatedAt
           : (_lastSyncMillis > 0
@@ -145,18 +152,25 @@ class RestaurantRepository {
     }
   }
 
-  /// 기존 캐시 목록에 Firestore 증분(Delta) 문서를 ID 기준으로 병합(Upsert)
+  /// 기존 캐시 목록에 Firestore 증분(Delta) 문서를 ID 기준으로 병합(Upsert / Tombstone 삭제)
   static List<RestaurantModel> mergeDeltaRestaurants({
     required List<RestaurantModel> existing,
     required List<RestaurantModel> deltas,
   }) {
-    if (deltas.isEmpty) return List<RestaurantModel>.from(existing);
+    if (deltas.isEmpty) {
+      return existing.where((r) => !r.isDeleted).toList();
+    }
 
     final byId = <String, RestaurantModel>{
-      for (final r in existing) r.id: r,
+      for (final r in existing)
+        if (!r.isDeleted) r.id: r,
     };
     for (final delta in deltas) {
-      byId[delta.id] = delta;
+      if (delta.isDeleted) {
+        byId.remove(delta.id);
+      } else {
+        byId[delta.id] = delta;
+      }
     }
     return byId.values.toList();
   }
@@ -198,6 +212,11 @@ class RestaurantRepository {
       hasNoWaiting: true,
       isSoloFriendly: false,
       openHoursText: '17:00 - 01:00',
+      priceRangeText: '1.5~2만원대',
+      openingHours: OpeningHoursSchedule(
+        openTime: '17:00',
+        closeTime: '01:00',
+      ),
       suitableParties: [
         PartyType.coupleMF,
         PartyType.duoSame,
@@ -235,6 +254,13 @@ class RestaurantRepository {
       hasNoWaiting: false,
       isSoloFriendly: true,
       openHoursText: '11:30 - 21:30',
+      priceRangeText: '1~1.5만원대',
+      openingHours: OpeningHoursSchedule(
+        openTime: '11:30',
+        closeTime: '21:30',
+        breakStart: '15:00',
+        breakEnd: '17:00',
+      ),
       suitableParties: [
         PartyType.soloMale,
         PartyType.soloFemale,
@@ -271,7 +297,12 @@ class RestaurantRepository {
       isOpenNow: true,
       hasNoWaiting: true,
       isSoloFriendly: true,
-      openHoursText: '11:00 - 21:00',
+      openHoursText: '10:30 - 21:00',
+      priceRangeText: '1.2~1.6만원',
+      openingHours: OpeningHoursSchedule(
+        openTime: '10:30',
+        closeTime: '21:00',
+      ),
       suitableParties: [
         PartyType.soloMale,
         PartyType.soloFemale,
@@ -309,6 +340,11 @@ class RestaurantRepository {
       hasNoWaiting: true,
       isSoloFriendly: false,
       openHoursText: '16:00 - 23:30',
+      priceRangeText: '2~3만원대',
+      openingHours: OpeningHoursSchedule(
+        openTime: '16:00',
+        closeTime: '23:30',
+      ),
       suitableParties: [
         PartyType.coupleMF,
         PartyType.friends34,
@@ -345,6 +381,13 @@ class RestaurantRepository {
       hasNoWaiting: true,
       isSoloFriendly: true,
       openHoursText: '11:00 - 22:00',
+      priceRangeText: '1~1.5만원대',
+      openingHours: OpeningHoursSchedule(
+        openTime: '11:00',
+        closeTime: '22:00',
+        breakStart: '15:30',
+        breakEnd: '17:00',
+      ),
       suitableParties: [
         PartyType.soloMale,
         PartyType.soloFemale,
@@ -382,6 +425,12 @@ class RestaurantRepository {
       hasNoWaiting: false,
       isSoloFriendly: false,
       openHoursText: '17:30 - 02:00',
+      priceRangeText: '2~3만원대',
+      openingHours: OpeningHoursSchedule(
+        openTime: '17:30',
+        closeTime: '02:00',
+        closedWeekdays: [DateTime.monday],
+      ),
       suitableParties: [
         PartyType.coupleMF,
         PartyType.duoSame,
@@ -419,6 +468,13 @@ class RestaurantRepository {
       hasNoWaiting: true,
       isSoloFriendly: false,
       openHoursText: '12:00 - 22:00',
+      priceRangeText: '2~2.5만원대',
+      openingHours: OpeningHoursSchedule(
+        openTime: '12:00',
+        closeTime: '22:00',
+        breakStart: '15:30',
+        breakEnd: '17:00',
+      ),
       suitableParties: [
         PartyType.coupleMF,
         PartyType.duoSame,
@@ -454,6 +510,13 @@ class RestaurantRepository {
       hasNoWaiting: true,
       isSoloFriendly: true,
       openHoursText: '17:00 - 22:30 (브레이크 타임)',
+      priceRangeText: '1.3~1.8만원',
+      openingHours: OpeningHoursSchedule(
+        openTime: '17:00',
+        closeTime: '22:30',
+        breakStart: '15:00',
+        breakEnd: '17:00',
+      ),
       suitableParties: [
         PartyType.soloMale,
         PartyType.soloFemale,

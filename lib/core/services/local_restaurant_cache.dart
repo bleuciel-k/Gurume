@@ -56,7 +56,7 @@ class LocalRestaurantCache {
       final restaurants = decoded
           .whereType<Map>()
           .map((item) => RestaurantModel.fromMap(Map<String, dynamic>.from(item)))
-          .where((r) => r.id.isNotEmpty)
+          .where((r) => r.id.isNotEmpty && !r.isDeleted)
           .toList();
 
       if (restaurants.isEmpty) return null;

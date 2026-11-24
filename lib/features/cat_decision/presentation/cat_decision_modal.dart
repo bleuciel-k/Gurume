@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oreguru/core/constants/app_colors.dart';
+import 'package:oreguru/core/services/location_service.dart';
 import 'package:oreguru/core/widgets/clay_button.dart';
 import 'package:oreguru/core/widgets/clay_container.dart';
 import 'package:oreguru/core/widgets/clay_rect_choice_card.dart';
+import 'package:oreguru/core/widgets/navigation_sheet.dart';
+import 'package:oreguru/core/widgets/restaurant_thumbnail.dart';
 import 'package:oreguru/data/models/party_and_preference_model.dart';
 import 'package:oreguru/data/models/restaurant_model.dart';
 import 'package:oreguru/features/candidate_tray/providers/candidate_provider.dart';
 import 'package:oreguru/features/cat_decision/presentation/widgets/tuxedo_cat_stage.dart';
 import 'package:oreguru/features/cat_decision/providers/cat_decision_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:oreguru/features/map_explorer/providers/map_filter_provider.dart';
 
 /// 구루냥(턱시도 고양이) 결정 모달:
 /// 1) 2열 대형 직사각형 인원/성별 카드 선택
@@ -372,6 +375,16 @@ class CatDecisionModal extends ConsumerWidget {
     final picked = state.pickedRestaurant;
     if (picked == null) return const SizedBox.shrink();
 
+    final mapState = ref.watch(mapExplorerProvider);
+    final now = ref.watch(currentDateTimeProvider)();
+    final liveMeters = mapState.distanceMetersFromCenter(picked);
+    final distanceLabel = LocationService.formatDistance(liveMeters);
+    final openStatus = picked.evaluateOpenStatus(now);
+    final (statusLabel, statusColor) = switch (openStatus) {
+      OpenStatus.open => ('영업중', AppColors.clayMintDark),
+      OpenStatus.breakTime => ('브레이크타임', AppColors.clayButterDark),
+      OpenStatus.closed => ('영업종료', AppColors.textMuted),
+    };
     final hasMoreOptions = remainingCount > 1;
 
     return Column(
@@ -388,27 +401,14 @@ class CatDecisionModal extends ConsumerWidget {
           ),
           child: Column(
             children: [
-              // 대표 음식 아이콘 + 왕관 배지
+              // 대표 음식 이미지/아이콘 + PICK 왕관 배지
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  ClayContainer(
-                    variant: ClaySurfaceVariant.recessed,
-                    borderRadius: AppRadii.cardChip,
-                    width: 96,
-                    height: 96,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: picked.heroColor,
-                        borderRadius: BorderRadius.circular(AppRadii.cardChip),
-                      ),
-                      child: Center(
-                        child: Text(
-                          picked.clayMarkerType.emoji,
-                          style: const TextStyle(fontSize: 48),
-                        ),
-                      ),
-                    ),
+                  RestaurantThumbnail(
+                    restaurant: picked,
+                    size: 96,
+                    emojiSize: 48,
                   ),
                   Positioned(
                     top: -10,
@@ -444,9 +444,54 @@ class CatDecisionModal extends ConsumerWidget {
                   letterSpacing: -0.5,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                alignment: WrapAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withAlpha(32),
+                      borderRadius: BorderRadius.circular(AppRadii.badge),
+                    ),
+                    child: Text(
+                      statusLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: statusColor,
+                      ),
+                    ),
+                  ),
+                  if (picked.priceRangeText.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.bgWarmSand,
+                        borderRadius: BorderRadius.circular(AppRadii.badge),
+                      ),
+                      child: Text(
+                        '💰 ${picked.priceRangeText}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textTaupe,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
               Text(
-                '${picked.category} · ⭐ ${picked.rating} · ${picked.distanceMeters}m',
+                '${picked.category} · ⭐ ${picked.rating} · $distanceLabel',
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -488,23 +533,21 @@ class CatDecisionModal extends ConsumerWidget {
         ),
         const SizedBox(height: 16),
 
-        // 메인 CTA: 여기로 출발!
+        // 메인 CTA: 여기로 출발! (멀티 지도 선택 시트)
         ClayButton(
           variant: ClaySurfaceVariant.accent,
           borderRadius: AppRadii.buttonInput,
           padding: const EdgeInsets.symmetric(vertical: 16),
-          onPressed: () async {
-            final uri = Uri.parse(
-              'https://www.google.com/maps/dir/?api=1&destination=${picked.latitude},${picked.longitude}',
+          onPressed: () {
+            final onLaunch = ref.read(navigationLaunchHandlerProvider);
+            showClayNavigationSheet(
+              context,
+              picked,
+              onLaunch: onLaunch,
             );
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            } else if (context.mounted) {
-              Navigator.of(context).pop();
-            }
           },
           child: const Text(
-            '📍 여기로 출발! (길찾기 열기)',
+            '📍 여기로 출발! (길찾기 앱 선택)',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w900,
