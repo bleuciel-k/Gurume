@@ -118,6 +118,35 @@
         }
       };
 
+      window.oreguruShare = {
+        shareOrDownloadPng: async function (base64Png, fileName, shareText) {
+          try {
+            var binary = atob(base64Png);
+            var bytes = new Uint8Array(binary.length);
+            for (var i = 0; i < binary.length; i++) {
+              bytes[i] = binary.charCodeAt(i);
+            }
+            var blob = new Blob([bytes], { type: 'image/png' });
+            var file = new File([blob], fileName, { type: 'image/png' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({ files: [file], title: 'オレグル 픽!', text: shareText });
+              return 'shared';
+            }
+            var url = URL.createObjectURL(blob);
+            var link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+            return fileName;
+          } catch (_) {
+            return null;
+          }
+        }
+      };
+
       var initialKey = window.oreguruMaps.getStoredKey();
       if (initialKey) {
         window.oreguruMaps.loadWithKey(initialKey);

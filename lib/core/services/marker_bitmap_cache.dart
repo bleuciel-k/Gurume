@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:oreguru/core/constants/app_colors.dart';
+import 'package:oreguru/core/services/clay_miniature_renderer.dart';
 import 'package:oreguru/data/models/restaurant_model.dart';
 
 /// Google Maps SDK 위에서 3D 클레이모피즘 맛집 건물 마커를
@@ -182,7 +183,7 @@ class MarkerBitmapCache {
         ),
     );
 
-    // 5. 내부 아이콘 배경 + 음식 이모지
+    // 5. 내부 아이콘 배경 + 3D 점토 미니어처 건물 스프라이트
     final iconBgRect = Rect.fromLTWH(cardLeft + 6, cardTop + 19, cardW - 12, 29);
     canvas.drawRRect(
       RRect.fromRectAndRadius(iconBgRect, const Radius.circular(9)),
@@ -192,20 +193,16 @@ class MarkerBitmapCache {
             : restaurant.heroColor,
     );
 
-    final emojiPainter = TextPainter(
-      text: TextSpan(
-        text: restaurant.clayMarkerType.emoji,
-        style: const TextStyle(fontSize: 18),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    emojiPainter.paint(
-      canvas,
-      Offset(
-        cx - emojiPainter.width / 2,
-        iconBgRect.center.dy - emojiPainter.height / 2,
-      ),
+    canvas.save();
+    canvas.clipRRect(
+      RRect.fromRectAndRadius(iconBgRect, const Radius.circular(9)),
     );
+    ClayMiniatureRenderer.drawClayBuilding(
+      canvas,
+      iconBgRect.deflate(1.0),
+      restaurant.clayMarkerType,
+    );
+    canvas.restore();
 
     // 6. 장바구니 담김 배지 (🐾)
     if (isCandidate) {

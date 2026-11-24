@@ -76,20 +76,29 @@ class Clay3DMarkerWidget extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 3),
-                      // 음식점 3D 아이콘 본체
+                      // 음식점 3D 미니어처 건물 스프라이트 (로드 불가 시 이모지 폴백)
                       Container(
                         width: 44,
-                        height: 32,
+                        height: 34,
                         decoration: BoxDecoration(
                           color: isSelected
                               ? Colors.white.withAlpha(235)
                               : restaurant.heroColor,
                           borderRadius: BorderRadius.circular(9),
                         ),
-                        child: Center(
-                          child: Text(
-                            restaurant.clayMarkerType.emoji,
-                            style: const TextStyle(fontSize: 20),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(9),
+                          child: Image.asset(
+                            restaurant.clayMarkerType.assetPath,
+                            width: 44,
+                            height: 34,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Center(
+                              child: Text(
+                                restaurant.clayMarkerType.emoji,
+                                style: const TextStyle(fontSize: 20),
+                              ),
+                            ),
                           ),
                         ),
                       ),

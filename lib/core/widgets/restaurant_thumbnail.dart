@@ -53,9 +53,15 @@ class RestaurantThumbnail extends StatelessWidget {
       height: size,
       color: restaurant.heroColor,
       alignment: Alignment.center,
-      child: Text(
-        restaurant.clayMarkerType.emoji,
-        style: TextStyle(fontSize: emojiSize),
+      child: Image.asset(
+        restaurant.clayMarkerType.assetPath,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Text(
+          restaurant.clayMarkerType.emoji,
+          style: TextStyle(fontSize: emojiSize),
+        ),
       ),
     );
   }

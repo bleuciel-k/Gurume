@@ -11,16 +11,17 @@ import 'package:oreguru/core/widgets/restaurant_thumbnail.dart';
 import 'package:oreguru/data/models/party_and_preference_model.dart';
 import 'package:oreguru/data/models/restaurant_model.dart';
 import 'package:oreguru/features/candidate_tray/providers/candidate_provider.dart';
+import 'package:oreguru/features/cat_decision/presentation/widgets/clay_share_poster_dialog.dart';
 import 'package:oreguru/features/cat_decision/presentation/widgets/tuxedo_cat_stage.dart';
 import 'package:oreguru/features/cat_decision/providers/cat_decision_provider.dart';
 import 'package:oreguru/features/map_explorer/providers/map_filter_provider.dart';
 
 /// 구루냥(턱시도 고양이) 결정 모달:
-/// 1) 2열 대형 직사각형 인원/성별 카드 선택
-/// 2) 2열 대형 직사각형 취향 유도 질문 (Q1 분위기 -> Q2 맛)
-///    OR 유도 없이 구루냥에게 온전히 맡기기 (날씨·계절 입맛 다시기, 근거 없으면 랜덤)
-/// 3) 앞발 툭툭 건드리기 연출
-/// 4) 최종 1곳 결과 카드 + '여긴 안 땡겨! 빼고 다시 골라줘' 거절 제외 기능
+/// 1) 구루냥 페르소나 3종 + 2열 대형 클레이 인원/성별 카드 + '비토(Veto) 룰렛' 모드
+/// 2) 2열 대형 직사각형 취향 유도 질문 (Q1 분위기 -> Q2 맛 -> 저녁 2인+ 동적 반주 Q3)
+///    OR 유도 없이 구루냥에게 온전히 맡기기 (날씨·계절·상황 입맛 다시기)
+/// 3) 앞발 '고양이 펀치' 탈락 카드 밀쳐내기 연출
+/// 4) 최종 1곳 결과 카드 + 멀티 길찾기 + 클레이 포스터 공유 + 거절 제외 기능
 class CatDecisionModal extends ConsumerWidget {
   const CatDecisionModal({super.key});
 
@@ -43,6 +44,11 @@ class CatDecisionModal extends ConsumerWidget {
         .where((r) => !catState.rejectedCandidateIds.contains(r.id))
         .toList();
 
+    final showBack = catState.step == CatModalStep.askVibe ||
+        catState.step == CatModalStep.askTaste ||
+        catState.step == CatModalStep.askDrink ||
+        catState.step == CatModalStep.vetoRoulette;
+
     return DraggableScrollableSheet(
       initialChildSize: 0.90,
       minChildSize: 0.65,
@@ -64,8 +70,7 @@ class CatDecisionModal extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(18, 12, 18, 6),
                   child: Row(
                     children: [
-                      if (catState.step == CatModalStep.askVibe ||
-                          catState.step == CatModalStep.askTaste)
+                      if (showBack)
                         GestureDetector(
                           onTap: () => ref
                               .read(catDecisionProvider.notifier)
@@ -118,29 +123,44 @@ class CatDecisionModal extends ConsumerWidget {
                     controller: scrollController,
                     padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
                     children: [
-                      // 턱시도 고양이 구루냥 스테이지 & 말풍선
+                      // 턱시도 고양이 구루냥 스테이지 & 말풍선 (페르소나 소품 & 요일·시간대 태그 포함)
                       TuxedoCatStage(
                         pose: catState.catPose,
                         dialogue: catState.catDialogue,
+                        persona: catState.persona,
+                        situationTag: catState.situationTag,
                         badgeText: catState.step == CatModalStep.pickedResult
                             ? catState.decisionBadgeText
                             : null,
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 16),
 
                       // 단계별 본문 전환
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 240),
                         child: switch (catState.step) {
-                          CatModalStep.selectParty =>
-                            _buildPartyStep(ref, catState),
-                          CatModalStep.askVibe =>
-                            _buildVibeStep(ref, catState),
+                          CatModalStep.selectParty => _buildPartyStep(
+                              ref,
+                              catState,
+                              remainingCandidates.length,
+                            ),
+                          CatModalStep.askVibe => _buildVibeStep(
+                              ref,
+                              catState,
+                              remainingCandidates.length,
+                            ),
                           CatModalStep.askTaste =>
                             _buildTasteStep(ref, catState),
+                          CatModalStep.askDrink =>
+                            _buildDrinkStep(ref, catState),
                           CatModalStep.thinkingPoking => _buildPokingStage(
                               remainingCandidates,
-                              catState.activePokeIndex,
+                              catState,
+                            ),
+                          CatModalStep.vetoRoulette => _buildVetoRouletteStage(
+                              ref,
+                              remainingCandidates,
+                              catState,
                             ),
                           CatModalStep.pickedResult => _buildPickedResult(
                               context,
@@ -163,12 +183,91 @@ class CatDecisionModal extends ConsumerWidget {
     );
   }
 
-  /// 1단계: 2열 대형 직사각형 인원/성별 구성 선택 그리드
-  Widget _buildPartyStep(WidgetRef ref, CatDecisionState state) {
+  Widget _buildClayCardVisual(String assetPath, String fallbackEmoji) {
+    return SizedBox.expand(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.asset(
+          assetPath,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Center(
+            child: Text(
+              fallbackEmoji,
+              style: const TextStyle(fontSize: 34),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 1단계: 페르소나 선택 + 비토 룰렛 + 2열 대형 직사각형 인원/성별 구성 선택 그리드
+  Widget _buildPartyStep(
+    WidgetRef ref,
+    CatDecisionState state,
+    int remainingCount,
+  ) {
     return Column(
       key: const ValueKey('step_party'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // 구루냥 성격(페르소나) 스위치 바
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: CatPersona.values.map((persona) {
+              final isSelected = state.persona == persona;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8, bottom: 4),
+                child: GestureDetector(
+                  key: Key('persona_${persona.name}'),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    ref.read(catDecisionProvider.notifier).setPersona(persona);
+                  },
+                  child: ClayContainer(
+                    variant: isSelected
+                        ? ClaySurfaceVariant.accent
+                        : ClaySurfaceVariant.raised,
+                    borderRadius: AppRadii.buttonInput,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 7,
+                    ),
+                    child: Text(
+                      '${persona.emoji} ${persona.label}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color:
+                            isSelected ? Colors.white : AppColors.textEspresso,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${state.persona.emoji} ${state.persona.description}',
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textTaupe,
+          ),
+        ),
+
+        if (remainingCount >= 2) ...[
+          const SizedBox(height: 10),
+          _VetoRouletteBanner(
+            remainingCount: remainingCount,
+            onTap: () => ref.read(catDecisionProvider.notifier).startVetoMode(),
+          ),
+        ],
+
+        const SizedBox(height: 14),
         const _StepHeader(
           stepBadge: 'STEP 1',
           title: '누구랑 함께 가나요?',
@@ -188,10 +287,7 @@ class CatDecisionModal extends ConsumerWidget {
               subtitle: party.subtitle,
               badgeTint: party.cardTint,
               isSelected: state.selectedParty == party,
-              visual: Text(
-                party.emoji,
-                style: const TextStyle(fontSize: 34),
-              ),
+              visual: _buildClayCardVisual(party.assetPath, party.emoji),
               onTap: () =>
                   ref.read(catDecisionProvider.notifier).selectParty(party),
             );
@@ -205,6 +301,7 @@ class CatDecisionModal extends ConsumerWidget {
   Widget _buildVibeStep(
     WidgetRef ref,
     CatDecisionState state,
+    int remainingCount,
   ) {
     return Column(
       key: const ValueKey('step_vibe'),
@@ -214,7 +311,14 @@ class CatDecisionModal extends ConsumerWidget {
           onTap: () =>
               ref.read(catDecisionProvider.notifier).entrustToCatByWeather(),
         ),
-        const SizedBox(height: 18),
+        if (remainingCount >= 2) ...[
+          const SizedBox(height: 10),
+          _VetoRouletteBanner(
+            remainingCount: remainingCount,
+            onTap: () => ref.read(catDecisionProvider.notifier).startVetoMode(),
+          ),
+        ],
+        const SizedBox(height: 16),
         const _StepHeader(
           stepBadge: 'STEP 2 · 취향 힌트 1/2',
           title: '오늘 끌리는 분위기는?',
@@ -234,10 +338,7 @@ class CatDecisionModal extends ConsumerWidget {
               subtitle: vibe.subtitle,
               badgeTint: vibe.cardTint,
               isSelected: state.selectedVibe == vibe,
-              visual: Text(
-                vibe.emoji,
-                style: const TextStyle(fontSize: 34),
-              ),
+              visual: _buildClayCardVisual(vibe.assetPath, vibe.emoji),
               onTap: () =>
                   ref.read(catDecisionProvider.notifier).selectVibe(vibe),
             );
@@ -264,7 +365,7 @@ class CatDecisionModal extends ConsumerWidget {
         const _StepHeader(
           stepBadge: 'STEP 2 · 취향 힌트 2/2',
           title: '지금 입에서 땡기는 맛은?',
-          subtitle: '마지막 한 가지! 선택 즉시 구루냥이 골라드려요',
+          subtitle: '선택 즉시 구루냥이 골라드려요 (저녁 모임이면 한잔 여부 확인)',
         ),
         const SizedBox(height: 14),
         GridView.count(
@@ -280,10 +381,7 @@ class CatDecisionModal extends ConsumerWidget {
               subtitle: taste.subtitle,
               badgeTint: taste.cardTint,
               isSelected: state.selectedTaste == taste,
-              visual: Text(
-                taste.emoji,
-                style: const TextStyle(fontSize: 34),
-              ),
+              visual: _buildClayCardVisual(taste.assetPath, taste.emoji),
               onTap: () => ref
                   .read(catDecisionProvider.notifier)
                   .selectTasteAndDecide(taste),
@@ -294,10 +392,196 @@ class CatDecisionModal extends ConsumerWidget {
     );
   }
 
-  /// 3단계: 구루냥이 후보 카드들을 앞발로 툭툭 건드리는 연출
+  /// 2단계-C: 저녁 시간대 + 2인 이상 모임일 때 동적 등장하는 반주 질문
+  Widget _buildDrinkStep(
+    WidgetRef ref,
+    CatDecisionState state,
+  ) {
+    return Column(
+      key: const ValueKey('step_drink'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _EntrustToCatBanner(
+          onTap: () =>
+              ref.read(catDecisionProvider.notifier).entrustToCatByWeather(),
+        ),
+        const SizedBox(height: 18),
+        const _StepHeader(
+          stepBadge: 'STEP 3 · 저녁 모임 보너스',
+          title: '오늘 가볍게 한잔 곁들일 건가냥?',
+          subtitle: '술 한잔 분위기와 깔끔한 식사 위주 중 골라주세요',
+        ),
+        const SizedBox(height: 14),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
+          childAspectRatio: 1.15,
+          children: DrinkPreference.values.map((drink) {
+            return ClayRectChoiceCard(
+              key: Key('drink_${drink.name}'),
+              title: drink.title,
+              subtitle: drink.subtitle,
+              badgeTint: drink.cardTint,
+              isSelected: state.selectedDrink == drink,
+              visual: Text(
+                drink.emoji,
+                style: const TextStyle(fontSize: 38),
+              ),
+              onTap: () => ref
+                  .read(catDecisionProvider.notifier)
+                  .selectDrinkAndDecide(drink),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  /// 돌아가며 1곳씩 빼는 '비토(Veto) 룰렛' 스테이지
+  Widget _buildVetoRouletteStage(
+    WidgetRef ref,
+    List<RestaurantModel> remaining,
+    CatDecisionState state,
+  ) {
+    return Column(
+      key: const ValueKey('step_veto_roulette'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _StepHeader(
+          stepBadge: '🚫 비토(Veto) 룰렛 · ${remaining.length}곳 생존',
+          title: '돌아가며 안 땡기는 곳을 빼주세요!',
+          subtitle: '마지막 1곳이 남거나 아래 결정 버튼을 누르면 구루냥이 바로 픽해요',
+        ),
+        const SizedBox(height: 14),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.96,
+          children: remaining.map((item) {
+            return GestureDetector(
+              key: Key('veto_card_${item.id}'),
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                ref.read(catDecisionProvider.notifier).vetoCandidate(item.id);
+              },
+              child: ClayContainer(
+                variant: ClaySurfaceVariant.card,
+                borderRadius: AppRadii.cardChip,
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    RestaurantThumbnail(
+                      restaurant: item,
+                      size: 62,
+                      emojiSize: 30,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      item.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textEspresso,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.signatureDish,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textTaupe,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.clayBerry.withAlpha(30),
+                        borderRadius: BorderRadius.circular(AppRadii.badge),
+                      ),
+                      child: const Text(
+                        '✕ 여기 빼기',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.clayBerry,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+        if (state.vetoHistory.isNotEmpty) ...[
+          ClayButton(
+            key: const Key('veto_undo_button'),
+            variant: ClaySurfaceVariant.raised,
+            borderRadius: AppRadii.buttonInput,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              ref.read(catDecisionProvider.notifier).undoLastVeto();
+            },
+            child: const Center(
+              child: Text(
+                '↩️ 방금 뺀 가게 되살리기',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textEspresso,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        ClayButton(
+          key: const Key('veto_finish_button'),
+          variant: ClaySurfaceVariant.accent,
+          borderRadius: AppRadii.buttonInput,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          onPressed: () {
+            HapticFeedback.mediumImpact();
+            ref.read(catDecisionProvider.notifier).finishVetoAndPick();
+          },
+          child: Center(
+            child: Text(
+              '😼 남은 ${remaining.length}곳 중 구루냥이 바로 결정!',
+              style: const TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 3단계: 구루냥 '고양이 펀치'로 탈락 후보 카드를 툭, 툭 날려버리는 연출
   Widget _buildPokingStage(
     List<RestaurantModel> remaining,
-    int activePokeIndex,
+    CatDecisionState catState,
   ) {
     return Column(
       key: const ValueKey('step_poking'),
@@ -309,52 +593,80 @@ class CatDecisionModal extends ConsumerWidget {
           alignment: WrapAlignment.center,
           children: List.generate(remaining.length, (i) {
             final item = remaining[i];
-            final isPoked = i == activePokeIndex;
-            return AnimatedScale(
-              scale: isPoked ? 1.14 : 0.96,
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutBack,
-              child: AnimatedRotation(
-                turns: isPoked ? 0.02 : -0.01,
-                duration: const Duration(milliseconds: 180),
-                child: ClayContainer(
-                  variant: isPoked
-                      ? ClaySurfaceVariant.accent
-                      : ClaySurfaceVariant.card,
-                  borderRadius: AppRadii.cardChip,
-                  width: 148,
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    children: [
-                      Text(
-                        item.clayMarkerType.emoji,
-                        style: const TextStyle(fontSize: 32),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        item.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: isPoked
-                              ? Colors.white
-                              : AppColors.textEspresso,
-                        ),
-                      ),
-                      if (isPoked) ...[
-                        const SizedBox(height: 4),
-                        const Text(
-                          '🐾 툭!',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+            final isEliminated =
+                catState.eliminatedDuringPunchIds.contains(item.id);
+            final isJustPunched = catState.currentlyPunchedId == item.id;
+            final isPoked = i == catState.activePokeIndex && !isEliminated;
+
+            return AnimatedSlide(
+              offset: isEliminated
+                  ? Offset(i.isEven ? -1.35 : 1.35, 0.25)
+                  : Offset.zero,
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeInCubic,
+              child: AnimatedOpacity(
+                opacity: isEliminated ? 0.18 : 1.0,
+                duration: const Duration(milliseconds: 220),
+                child: AnimatedScale(
+                  scale: isJustPunched ? 0.90 : (isPoked ? 1.12 : 0.98),
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutBack,
+                  child: AnimatedRotation(
+                    turns: isEliminated
+                        ? (i.isEven ? -0.14 : 0.14)
+                        : (isPoked ? 0.02 : -0.01),
+                    duration: const Duration(milliseconds: 180),
+                    child: ClayContainer(
+                      variant: isPoked
+                          ? ClaySurfaceVariant.accent
+                          : ClaySurfaceVariant.card,
+                      borderRadius: AppRadii.cardChip,
+                      width: 148,
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        children: [
+                          RestaurantThumbnail(
+                            restaurant: item,
+                            size: 52,
+                            emojiSize: 28,
                           ),
-                        ),
-                      ],
-                    ],
+                          const SizedBox(height: 8),
+                          Text(
+                            item.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: isPoked
+                                  ? Colors.white
+                                  : AppColors.textEspresso,
+                            ),
+                          ),
+                          if (isEliminated || isJustPunched) ...[
+                            const SizedBox(height: 4),
+                            const Text(
+                              '🐾 퍽! 탈락',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.clayBerry,
+                              ),
+                            ),
+                          ] else if (isPoked) ...[
+                            const SizedBox(height: 4),
+                            const Text(
+                              '🐾 툭!',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -365,7 +677,7 @@ class CatDecisionModal extends ConsumerWidget {
     );
   }
 
-  /// 4단계: 구루냥이 낚아챈 최종 1곳 추천 결과 카드 + 거절 제외 버튼
+  /// 4단계: 구루냥이 낚아챈 최종 1곳 추천 결과 카드 + 멀티 길찾기 + 포스터 공유 + 거절 제외
   Widget _buildPickedResult(
     BuildContext context,
     WidgetRef ref,
@@ -557,6 +869,36 @@ class CatDecisionModal extends ConsumerWidget {
         ),
         const SizedBox(height: 10),
 
+        // 클레이 포스터 공유하기 버튼
+        ClayButton(
+          key: const Key('share_poster_button'),
+          variant: ClaySurfaceVariant.raised,
+          borderRadius: AppRadii.buttonInput,
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            showClaySharePosterDialog(
+              context,
+              restaurant: picked,
+              persona: state.persona,
+              catDialogue: state.catDialogue,
+              distanceLabel: distanceLabel,
+              openStatusLabel: statusLabel,
+            );
+          },
+          child: const Center(
+            child: Text(
+              '📸 클레이 포스터 공유하기',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: AppColors.clayOrangeDark,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+
         // 거절 시 재추천 목록에서 영구 제외하는 버튼
         ClayButton(
           variant: ClaySurfaceVariant.raised,
@@ -689,6 +1031,61 @@ class _EntrustToCatBanner extends StatelessWidget {
             Icons.arrow_forward_ios_rounded,
             size: 16,
             color: Colors.white,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VetoRouletteBanner extends StatelessWidget {
+  final int remainingCount;
+  final VoidCallback onTap;
+
+  const _VetoRouletteBanner({
+    required this.remainingCount,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClayButton(
+      key: const Key('start_veto_mode_button'),
+      variant: ClaySurfaceVariant.raised,
+      borderRadius: AppRadii.buttonInput,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      onPressed: onTap,
+      child: Row(
+        children: [
+          const Text('🚫', style: TextStyle(fontSize: 18)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '돌아가며 빼기 (비토 룰렛)',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textEspresso,
+                  ),
+                ),
+                Text(
+                  '모임원과 후보 $remainingCount곳 중 싫은 곳부터 1개씩 지워보세요',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textTaupe,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(
+            Icons.chevron_right_rounded,
+            size: 20,
+            color: AppColors.clayOrangeDark,
           ),
         ],
       ),

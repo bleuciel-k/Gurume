@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:oreguru/core/constants/app_colors.dart';
 import 'package:oreguru/core/widgets/clay_container.dart';
+import 'package:oreguru/data/models/party_and_preference_model.dart';
 import 'package:oreguru/features/cat_decision/providers/cat_decision_provider.dart';
 
 /// 클래식 카툰(부치 캣 스타일)의 능글맞은 턱시도 고양이 '구루냥(グルニャン)' 스테이지.
@@ -14,12 +15,16 @@ class TuxedoCatStage extends StatefulWidget {
   final CatMoodPose pose;
   final String dialogue;
   final String? badgeText;
+  final CatPersona persona;
+  final String? situationTag;
 
   const TuxedoCatStage({
     super.key,
     required this.pose,
     required this.dialogue,
     this.badgeText,
+    this.persona = CatPersona.classic,
+    this.situationTag,
   });
 
   @override
@@ -104,6 +109,7 @@ class _TuxedoCatStageState extends State<TuxedoCatStage>
                         size: const Size(124, 118),
                         painter: _TuxedoCatPainter(
                           pose: widget.pose,
+                          persona: widget.persona,
                           animProgress: t,
                         ),
                       ),
@@ -116,7 +122,7 @@ class _TuxedoCatStageState extends State<TuxedoCatStage>
         ),
         const SizedBox(height: 6),
 
-        // 구루냥 말풍선 (Figma 모달 카드 스타일)
+        // 구루냥 말풍선 (Figma 모달 카드 스타일 + 시간/요일 상황 태그 + 추천 배지)
         ClayContainer(
           variant: ClaySurfaceVariant.card,
           borderRadius: AppRadii.cardChip,
@@ -129,26 +135,56 @@ class _TuxedoCatStageState extends State<TuxedoCatStage>
           ),
           child: Column(
             children: [
-              if (widget.badgeText != null && widget.badgeText!.isNotEmpty) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 3,
-                  ),
-                  margin: const EdgeInsets.only(bottom: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.clayOrangeSoftBg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    widget.badgeText!,
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.clayOrangeDark,
-                    ),
-                  ),
+              if ((widget.badgeText != null && widget.badgeText!.isNotEmpty) ||
+                  (widget.situationTag != null &&
+                      widget.situationTag!.isNotEmpty)) ...[
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    if (widget.situationTag != null &&
+                        widget.situationTag!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.bgWarmSand,
+                          borderRadius: BorderRadius.circular(AppRadii.badge),
+                        ),
+                        child: Text(
+                          widget.situationTag!,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textTaupe,
+                          ),
+                        ),
+                      ),
+                    if (widget.badgeText != null && widget.badgeText!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.clayOrangeSoftBg,
+                          borderRadius: BorderRadius.circular(AppRadii.badge),
+                        ),
+                        child: Text(
+                          widget.badgeText!,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.clayOrangeDark,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
+                const SizedBox(height: 6),
               ],
               Text(
                 widget.dialogue,
@@ -168,13 +204,15 @@ class _TuxedoCatStageState extends State<TuxedoCatStage>
   }
 }
 
-/// 부치 캣 스타일 턱시도 고양이 커스텀 페인터 (능글 미소 / 툭툭 건드리기 / 혀 날름 입맛 다시기)
+/// 부치 캣 스타일 턱시도 고양이 커스텀 페인터 (능글 미소 / 툭툭 건드리기 / 혀 날름 / 페르소나 액세서리)
 class _TuxedoCatPainter extends CustomPainter {
   final CatMoodPose pose;
+  final CatPersona persona;
   final double animProgress;
 
   const _TuxedoCatPainter({
     required this.pose,
+    required this.persona,
     required this.animProgress,
   });
 
@@ -410,10 +448,79 @@ class _TuxedoCatPainter extends CustomPainter {
       Rect.fromCenter(center: Offset(cx + 20, rightPawY), width: 17, height: 14),
       whitePaint,
     );
+
+    // 10. 페르소나별 클레이 소품 (깐깐한 집사냥 = 모노클 & 나비넥타이 / 모험가냥 = 탐험가 모자 & 반다나)
+    if (persona == CatPersona.pickyButler) {
+      // 황금 모노클 (오른쪽 눈) + 체인
+      canvas.drawCircle(
+        Offset(cx + 14, cy - 11),
+        10.5,
+        Paint()
+          ..color = AppColors.clayButter
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.2,
+      );
+      canvas.drawLine(
+        Offset(cx + 24, cy - 8),
+        Offset(cx + 27, cy + 12),
+        Paint()
+          ..color = AppColors.clayButterDark
+          ..strokeWidth = 1.4,
+      );
+      // 빨간 나비넥타이 (흰 턱시도 가슴 위)
+      final bowPaint = Paint()..color = AppColors.clayBerry;
+      final leftBow = Path()
+        ..moveTo(cx, cy + 20)
+        ..lineTo(cx - 10, cy + 15)
+        ..lineTo(cx - 10, cy + 25)
+        ..close();
+      final rightBow = Path()
+        ..moveTo(cx, cy + 20)
+        ..lineTo(cx + 10, cy + 15)
+        ..lineTo(cx + 10, cy + 25)
+        ..close();
+      canvas.drawPath(leftBow, bowPaint);
+      canvas.drawPath(rightBow, bowPaint);
+      canvas.drawCircle(Offset(cx, cy + 20), 3.2, Paint()..color = Colors.white);
+    } else if (persona == CatPersona.adventurer) {
+      // 모험가냥 오렌지 스카프 + 탐험가 페도라 햇
+      canvas.drawArc(
+        Rect.fromCenter(center: Offset(cx, cy + 18), width: 32, height: 14),
+        0.15,
+        math.pi - 0.3,
+        true,
+        Paint()..color = AppColors.clayOrange,
+      );
+      canvas.save();
+      canvas.translate(cx - 2, cy - 35);
+      canvas.rotate(-0.14);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-26, 2, 52, 7),
+          const Radius.circular(4),
+        ),
+        Paint()..color = const Color(0xFFB56A3B),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndCorners(
+          const Rect.fromLTWH(-16, -11, 32, 14),
+          topLeft: const Radius.circular(10),
+          topRight: const Radius.circular(10),
+        ),
+        Paint()..color = const Color(0xFFD6884F),
+      );
+      canvas.drawRect(
+        const Rect.fromLTWH(-16, -2, 32, 4),
+        Paint()..color = AppColors.clayOrange,
+      );
+      canvas.restore();
+    }
   }
 
   @override
   bool shouldRepaint(covariant _TuxedoCatPainter oldDelegate) {
-    return oldDelegate.pose != pose || oldDelegate.animProgress != animProgress;
+    return oldDelegate.pose != pose ||
+        oldDelegate.persona != persona ||
+        oldDelegate.animProgress != animProgress;
   }
 }

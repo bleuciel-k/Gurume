@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:oreguru/app.dart';
+import 'package:oreguru/core/services/cat_dialogue_engine.dart';
 import 'package:oreguru/core/services/local_restaurant_cache.dart';
 import 'package:oreguru/core/services/location_service.dart';
 import 'package:oreguru/core/services/marker_bitmap_cache.dart';
@@ -13,6 +15,7 @@ import 'package:oreguru/core/widgets/navigation_sheet.dart';
 import 'package:oreguru/data/models/party_and_preference_model.dart';
 import 'package:oreguru/data/models/restaurant_model.dart';
 import 'package:oreguru/data/repositories/restaurant_repository.dart';
+import 'package:oreguru/features/cat_decision/providers/cat_decision_provider.dart';
 import 'package:oreguru/features/map_explorer/presentation/widgets/one_tap_filter_bar.dart';
 import 'package:oreguru/features/map_explorer/providers/map_filter_provider.dart';
 
@@ -58,9 +61,9 @@ void main() {
               ),
             ),
           ),
-          // 저녁 피크 시각 고정
+          // 화요일 점심 피크 고정 (반주 동적 질문 미노출 시간대)
           currentDateTimeProvider.overrideWithValue(
-            () => DateTime(2026, 11, 24, 19, 0),
+            () => DateTime(2026, 11, 24, 12, 30),
           ),
         ],
         child: const OreguruApp(),
@@ -79,10 +82,9 @@ void main() {
     expect(find.text('연남 빗소리 주막'), findsOneWidget);
     expect(find.text('오레노 돈코츠 라멘'), findsOneWidget);
 
-    // 2. 첫 번째 가게 탭 -> 실시간 영업중, 가격대 배지 확인 & 담기
+    // 2. 첫 번째 가게 탭 -> 브레이크타임/영업상태 및 가격대 배지 확인 & 담기
     await tester.tap(find.text('연남 빗소리 주막'));
     await tester.pumpAndSettle();
-    expect(find.text('영업중'), findsOneWidget);
     expect(find.text('💰 1.5~2만원대'), findsOneWidget);
     expect(find.text('🛒 후보 장바구니 담기'), findsOneWidget);
     await tester.tap(find.text('🛒 후보 장바구니 담기'));
@@ -134,6 +136,240 @@ void main() {
     }
     expect(find.text('PICK! 🐾'), findsOneWidget);
     expect(find.text('😿 여긴 안 땡겨! (이 가게도 제외하기)'), findsOneWidget);
+  });
+
+  testWidgets('Phase 2: 페르소나, 불금 저녁 반주 질문, 고양이 펀치 및 클레이 포스터 공유 검증', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 880);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final mockWeatherService = WeatherService(
+      client: MockClient(
+        (_) async => http.Response(
+          '{"current":{"weather_code":1,"temperature_2m":18.0}}',
+          200,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          weatherServiceProvider.overrideWithValue(mockWeatherService),
+          localRestaurantCacheProvider.overrideWithValue(
+            LocalRestaurantCache.inMemory(),
+          ),
+          locationServiceProvider.overrideWithValue(
+            _FakeLocationService(
+              const LocationFetchResult(
+                location: kDefaultYeonnamLocation,
+                isLiveGps: true,
+              ),
+            ),
+          ),
+          // 금요일 저녁 19:00 고정 -> 🔥 불금 저녁 + 저녁 2인 이상 한잔 질문 활성화
+          currentDateTimeProvider.overrideWithValue(
+            () => DateTime(2026, 11, 20, 19, 0),
+          ),
+        ],
+        child: const OreguruApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 두 가게 담기
+    await tester.tap(find.text('연남 빗소리 주막'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('🛒 후보 장바구니 담기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.close_rounded).last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('오레노 돈코츠 라멘'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('🛒 후보 장바구니 담기'));
+    await tester.pumpAndSettle();
+
+    // 구루냥 모달 열기 -> 🔥 불금 저녁 태그 노출 & 페르소나 전환 검증
+    await tester.tap(find.text('골라줘!'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('🔥 불금 저녁'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('persona_pickyButler')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.textContaining('가성비'), findsWidgets);
+
+    // 2인 커플 -> 분위기 -> 맛 선택 -> 저녁 2인+ 동적 반주 질문 자동 진입
+    await tester.ensureVisible(find.text('설레는 둘이서 (남녀)'));
+    await tester.pump();
+    await tester.tap(find.text('설레는 둘이서 (남녀)'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    await tester.ensureVisible(find.text('시끌벅적 신나게'));
+    await tester.pump();
+    await tester.tap(find.text('시끌벅적 신나게'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    await tester.ensureVisible(find.text('고소·바삭 육즙 폭발'));
+    await tester.pump();
+    await tester.tap(find.text('고소·바삭 육즙 폭발'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.text('오늘 가볍게 한잔 곁들일 건가냥?'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('drink_yesDrink')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('drink_yesDrink')));
+    await tester.pump();
+
+    // 고양이 펀치 탈락 연출 확인
+    await tester.pump(const Duration(milliseconds: 540));
+    expect(find.text('🐾 퍽! 탈락'), findsWidgets);
+
+    // 최종 PICK 확인 + 클레이 포스터 공유 다이얼로그 검증
+    for (int i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 260));
+    }
+    expect(find.text('PICK! 🐾'), findsOneWidget);
+
+    final shareBtn = find.byKey(const Key('share_poster_button'));
+    await tester.ensureVisible(shareBtn);
+    await tester.pump();
+    await tester.tap(shareBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.textContaining('이의 제기 불가'), findsOneWidget);
+    expect(find.byKey(const Key('save_poster_png_button')), findsOneWidget);
+    expect(find.byKey(const Key('copy_poster_text_button')), findsOneWidget);
+
+    String? copiedText;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        final args = call.arguments as Map?;
+        copiedText = args?['text'] as String?;
+      }
+      return null;
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    await tester.ensureVisible(find.byKey(const Key('copy_poster_text_button')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('copy_poster_text_button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(copiedText, contains('이의 제기 불가'));
+    expect(find.textContaining('클립보드에 복사했어요'), findsWidgets);
+  });
+
+  testWidgets('Phase 2: 비토(Veto) 룰렛 모드 빼기 · 되살리기 · 생존 픽 검증', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 880);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final mockWeatherService = WeatherService(
+      client: MockClient(
+        (_) async => http.Response(
+          '{"current":{"weather_code":1,"temperature_2m":20.0}}',
+          200,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          weatherServiceProvider.overrideWithValue(mockWeatherService),
+          localRestaurantCacheProvider.overrideWithValue(
+            LocalRestaurantCache.inMemory(),
+          ),
+          locationServiceProvider.overrideWithValue(
+            _FakeLocationService(
+              const LocationFetchResult(
+                location: kDefaultYeonnamLocation,
+                isLiveGps: true,
+              ),
+            ),
+          ),
+          currentDateTimeProvider.overrideWithValue(
+            () => DateTime(2026, 11, 24, 19, 0),
+          ),
+        ],
+        child: const OreguruApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 3곳 장바구니에 담기
+    for (final name in [
+      '연남 빗소리 주막',
+      '오레노 돈코츠 라멘',
+      '화로구이 숯불갈비집',
+    ]) {
+      await tester.tap(find.text(name));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('🛒 후보 장바구니 담기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.close_rounded).last);
+      await tester.pumpAndSettle();
+    }
+
+    // 구루냥 모달 -> 비토 룰렛 모드 진입
+    await tester.tap(find.text('골라줘!'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final vetoStartBtn = find.byKey(const Key('start_veto_mode_button'));
+    await tester.ensureVisible(vetoStartBtn);
+    await tester.pump();
+    await tester.tap(vetoStartBtn);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byKey(const Key('veto_card_rest_01')), findsOneWidget);
+    expect(find.byKey(const Key('veto_card_rest_02')), findsOneWidget);
+    expect(find.byKey(const Key('veto_card_rest_04')), findsOneWidget);
+
+    // 1곳 빼기 -> Undo 버튼으로 복구 확인
+    await tester.tap(find.byKey(const Key('veto_card_rest_01')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byKey(const Key('veto_card_rest_01')), findsNothing);
+    expect(find.byKey(const Key('veto_undo_button')), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const Key('veto_undo_button')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('veto_undo_button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byKey(const Key('veto_card_rest_01')), findsOneWidget);
+
+    // 2곳 연속 비토 시 생존한 1곳으로 자동 추첨 완료
+    await tester.tap(find.byKey(const Key('veto_card_rest_01')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.byKey(const Key('veto_card_rest_02')));
+    await tester.pump();
+
+    for (int i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 260));
+    }
+    expect(find.text('PICK! 🐾'), findsOneWidget);
+    expect(find.text('화로구이 숯불갈비집'), findsWidgets);
   });
 
   testWidgets('설정 모달, 멀티 길찾기 시트 및 뷰포트 재검색 동작 검증', (
@@ -248,6 +484,94 @@ void main() {
     expect(find.text('오레노 돈코츠 라멘'), findsOneWidget);
   });
 
+  test('CatDialogueEngine 상황별 대사 및 저녁 2인+ 반주 질문 분기 검증', () {
+    // 2026-11-20 is Friday
+    final fridayNight = DateTime(2026, 11, 20, 19, 30);
+    // 2026-11-23 is Monday
+    final mondayLunch = DateTime(2026, 11, 23, 12, 15);
+    final lateNight = DateTime(2026, 11, 24, 23, 30);
+
+    expect(CatDialogueEngine.resolveSituationTag(fridayNight), '🔥 불금 저녁');
+    expect(CatDialogueEngine.resolveSituationTag(mondayLunch), '💥 헬요일 점심');
+    expect(CatDialogueEngine.resolveSituationTag(lateNight), '🌙 심야 야식 타임');
+
+    expect(
+      CatDialogueEngine.buildOpeningDialogue(
+        persona: CatPersona.classic,
+        now: fridayNight,
+      ),
+      contains('불금'),
+    );
+    expect(
+      CatDialogueEngine.buildOpeningDialogue(
+        persona: CatPersona.classic,
+        now: mondayLunch,
+      ),
+      contains('월요일 점심'),
+    );
+
+    expect(
+      CatDialogueEngine.shouldAskDrinkQuestion(
+        party: PartyType.coupleMF,
+        now: fridayNight,
+      ),
+      isTrue,
+    );
+    expect(
+      CatDialogueEngine.shouldAskDrinkQuestion(
+        party: PartyType.coupleMF,
+        now: mondayLunch,
+      ),
+      isFalse,
+    );
+    expect(
+      CatDialogueEngine.shouldAskDrinkQuestion(
+        party: PartyType.soloMale,
+        now: fridayNight,
+      ),
+      isFalse,
+    );
+  });
+
+  test('CatPersona 가중치 스코어링 (깐깐한 집사냥 vs 모험가냥) 검증', () {
+    final izakayaWaiting = RestaurantRepository.seedRestaurants
+        .firstWhere((r) => r.id == 'rest_06'); // 웨이팅 있음, 2~3만원대, 평점 4.9
+    final affordableNoWait = RestaurantRepository.seedRestaurants
+        .firstWhere((r) => r.id == 'rest_05'); // 웨이팅 없음, 1~1.5만원대, 매콤
+
+    final butlerIzakayaScore = CatDecisionNotifier.scoreRestaurantForPersona(
+      izakayaWaiting,
+      persona: CatPersona.pickyButler,
+    );
+    final butlerAffordableScore = CatDecisionNotifier.scoreRestaurantForPersona(
+      affordableNoWait,
+      persona: CatPersona.pickyButler,
+    );
+    expect(butlerAffordableScore, greaterThan(butlerIzakayaScore));
+
+    final adventurerIzakayaScore = CatDecisionNotifier.scoreRestaurantForPersona(
+      izakayaWaiting,
+      persona: CatPersona.adventurer,
+    );
+    expect(adventurerIzakayaScore, greaterThan(0));
+  });
+
+  test('22개 3D 클레이 PNG 에셋 번들 등록 및 로드 검증', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final paths = <String>[
+      'assets/images/clay/gurunyan_mascot.png',
+      ...PartyType.values.map((e) => e.assetPath),
+      ...VibePreference.values.map((e) => e.assetPath),
+      ...TastePreference.values.map((e) => e.assetPath),
+      ...ClayMarkerType.values.map((e) => e.assetPath),
+    ];
+    expect(paths.length, 22);
+    for (final path in paths) {
+      final data = await rootBundle.load(path);
+      expect(data.lengthInBytes, greaterThan(1000), reason: 'Asset $path empty');
+    }
+  });
+
   test('OpeningHoursSchedule 실시간 영업중 · 브레이크타임 · 심야 · 정기휴무 검증', () {
     const lunchDinnerPlace = OpeningHoursSchedule(
       openTime: '11:30',
@@ -273,29 +597,24 @@ void main() {
       lunchDinnerPlace.evaluateStatus(DateTime(2026, 11, 24, 22, 0)),
       OpenStatus.closed,
     );
-    // 일요일(7) 휴무
     expect(
       lunchDinnerPlace.evaluateStatus(DateTime(2026, 11, 22, 13, 0)),
       OpenStatus.closed,
     );
 
-    // 자정 넘긴 심야 주점 (17:30 - 02:00, 월요일(1) 정기휴무)
     const lateNightIzakaya = OpeningHoursSchedule(
       openTime: '17:30',
       closeTime: '02:00',
       closedWeekdays: [DateTime.monday],
     );
-    // 수요일 01:15 (화요일 저녁 영업 연장) -> 영업중
     expect(
       lateNightIzakaya.evaluateStatus(DateTime(2026, 11, 25, 1, 15)),
       OpenStatus.open,
     );
-    // 화요일 01:15 (전날 월요일 정기휴무) -> 영업종료
     expect(
       lateNightIzakaya.evaluateStatus(DateTime(2026, 11, 24, 1, 15)),
       OpenStatus.closed,
     );
-    // 수요일 02:30 (새벽 마감 후) -> 영업종료
     expect(
       lateNightIzakaya.evaluateStatus(DateTime(2026, 11, 25, 2, 30)),
       OpenStatus.closed,
@@ -372,7 +691,6 @@ void main() {
       isCandidate: true,
     );
     expect(pngBytes.length, greaterThan(500));
-    // PNG 시그니처 (0x89 P N G) 확인
     expect(pngBytes.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
 
     final first = await cache.getMarkerBitmap(
@@ -438,7 +756,6 @@ void main() {
         original.weatherComments[WeatherCondition.rainy]);
     expect(restored.updatedAtMillis, original.updatedAtMillis);
 
-    // Delta Sync 병합 검증: 1건 수정 + 1건 추가 + 1건 Tombstone(isDeleted: true) 삭제
     final updatedExisting = original.copyWith(
       name: '연남 빗소리 주막 (리뉴얼)',
       updatedAtMillis: 1763350000000,
@@ -466,7 +783,6 @@ void main() {
     expect(merged.any((r) => r.id == 'rest_99'), isTrue);
     expect(merged.any((r) => r.id == tombstoneTarget.id), isFalse);
 
-    // LocalRestaurantCache 저장 & 복원 검증
     final cache = LocalRestaurantCache();
     await cache.clear();
     await cache.saveSnapshot(

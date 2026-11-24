@@ -5,19 +5,55 @@ import 'package:oreguru/data/models/party_and_preference_model.dart';
 
 /// 2D 지도 위에 3D 점토 질감으로 렌더링되는 맛집 건물/아이콘 마커 타입
 enum ClayMarkerType {
-  ramenHouse('🍜', '라멘집', Color(0xFFFF8E5E)),
-  izakayaRoof('🍶', '주막/이자카야', Color(0xFF7B61FF)),
-  riceBowlShop('🍛', '덮밥/가정식', Color(0xFFFFB830)),
-  grillHouse('🥩', '구이/고기집', Color(0xFFE85D75)),
-  pastaTerrace('🍕', '브런치/양식', Color(0xFF4ECDC4)),
-  pokeSalad('🥗', '포케/소바', Color(0xFF4ECDC4)),
-  spicyPot('🍲', '전골/얼큰요리', Color(0xFFFC7D4E));
+  ramenHouse(
+    '🍜',
+    '라멘집',
+    Color(0xFFFF8E5E),
+    'assets/images/clay/marker_ramen_house.png',
+  ),
+  izakayaRoof(
+    '🍶',
+    '주막/이자카야',
+    Color(0xFF7B61FF),
+    'assets/images/clay/marker_izakaya_roof.png',
+  ),
+  riceBowlShop(
+    '🍛',
+    '덮밥/가정식',
+    Color(0xFFFFB830),
+    'assets/images/clay/marker_rice_bowl_shop.png',
+  ),
+  grillHouse(
+    '🥩',
+    '구이/고기집',
+    Color(0xFFE85D75),
+    'assets/images/clay/marker_grill_house.png',
+  ),
+  pastaTerrace(
+    '🍕',
+    '브런치/양식',
+    Color(0xFF4ECDC4),
+    'assets/images/clay/marker_pasta_terrace.png',
+  ),
+  pokeSalad(
+    '🥗',
+    '포케/소바',
+    Color(0xFF4ECDC4),
+    'assets/images/clay/marker_poke_salad.png',
+  ),
+  spicyPot(
+    '🍲',
+    '전골/얼큰요리',
+    Color(0xFFFC7D4E),
+    'assets/images/clay/marker_spicy_pot.png',
+  );
 
   final String emoji;
   final String label;
   final Color roofColor;
+  final String assetPath;
 
-  const ClayMarkerType(this.emoji, this.label, this.roofColor);
+  const ClayMarkerType(this.emoji, this.label, this.roofColor, this.assetPath);
 }
 
 /// 현재 시각 기준 매장 실시간 영업 상태
